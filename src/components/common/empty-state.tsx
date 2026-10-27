@@ -22,12 +22,12 @@ export function EmptyState({
   onSecondaryAction,
 }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center p-8 sm:p-12 text-center rounded-2xl border border-dashed border-slate-800 bg-slate-900/30">
-      <div className="p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/60 text-cyan-400 mb-4 shadow-inner">
-        <Icon className="w-6 h-6" />
+    <div className="flex flex-col items-center justify-center p-8 sm:p-12 text-center rounded-xl border border-dashed border-neutral-800 bg-black text-white">
+      <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-700 text-white mb-4">
+        <Icon className="w-6 h-6 text-white" />
       </div>
-      <h3 className="text-base font-semibold text-slate-200">{title}</h3>
-      <p className="text-sm text-slate-400 max-w-sm mt-1.5 mb-6 leading-relaxed">
+      <h3 className="text-base font-bold text-white">{title}</h3>
+      <p className="text-xs text-neutral-300 max-w-sm mt-1.5 mb-6 leading-relaxed">
         {description}
       </p>
       <div className="flex flex-wrap items-center justify-center gap-3">

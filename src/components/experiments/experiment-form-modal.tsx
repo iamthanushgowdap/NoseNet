@@ -159,10 +159,10 @@ export function ExperimentFormModal({
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {errors.length > 0 && (
-          <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs space-y-1">
+          <div className="p-3 rounded-lg bg-neutral-900 border border-neutral-700 text-white text-xs space-y-1">
             {errors.map((err, i) => (
               <div key={i} className="flex items-center gap-1.5">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-white" />
                 <span>{err}</span>
               </div>
             ))}
@@ -171,8 +171,8 @@ export function ExperimentFormModal({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-              Experiment ID {!isEditing && <span className="text-slate-500">(Optional auto)</span>}
+            <label className="block text-xs font-semibold text-white uppercase tracking-wider mb-1.5">
+              Experiment ID {!isEditing && <span className="text-neutral-400 font-normal">(Optional auto)</span>}
             </label>
             <input
               type="text"
@@ -180,29 +180,29 @@ export function ExperimentFormModal({
               disabled={isEditing}
               onChange={(e) => handleFieldChange(setId, e.target.value)}
               placeholder="e.g. EXP-2026-003"
-              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs disabled:opacity-50 focus:outline-none focus:border-cyan-500 font-mono"
+              className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-800 text-white placeholder:text-neutral-500 text-xs disabled:opacity-50 focus:outline-none focus:border-white font-mono"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-white uppercase tracking-wider mb-1.5">
               Status
             </label>
             <select
               value={status}
               onChange={(e) => handleFieldChange(setStatus, e.target.value as ExperimentStatus)}
-              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-cyan-500"
+              className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-800 text-white text-xs focus:outline-none focus:border-white"
             >
-              <option value="Draft">Draft</option>
-              <option value="Active">Active</option>
-              <option value="Completed">Completed</option>
-              <option value="Archived">Archived</option>
+              <option value="Draft" className="bg-black text-white">Draft</option>
+              <option value="Active" className="bg-black text-white">Active</option>
+              <option value="Completed" className="bg-black text-white">Completed</option>
+              <option value="Archived" className="bg-black text-white">Archived</option>
             </select>
           </div>
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+          <label className="block text-xs font-semibold text-white uppercase tracking-wider mb-1.5">
             Experiment Title / Name *
           </label>
           <input
@@ -211,12 +211,12 @@ export function ExperimentFormModal({
             value={name}
             onChange={(e) => handleFieldChange(setName, e.target.value)}
             placeholder="e.g. Shelf-Life Study: Normal Cake Frozen vs Room Temperature"
-            className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-cyan-500"
+            className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-800 text-white placeholder:text-neutral-500 text-xs focus:outline-none focus:border-white"
           />
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+          <label className="block text-xs font-semibold text-white uppercase tracking-wider mb-1.5">
             Description & Objective
           </label>
           <textarea
@@ -224,13 +224,13 @@ export function ExperimentFormModal({
             value={description}
             onChange={(e) => handleFieldChange(setDescription, e.target.value)}
             placeholder="Briefly state the research hypothesis and test setup..."
-            className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-cyan-500"
+            className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-800 text-white placeholder:text-neutral-500 text-xs focus:outline-none focus:border-white"
           />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-white uppercase tracking-wider mb-1.5">
               Testing Date *
             </label>
             <input
@@ -238,12 +238,12 @@ export function ExperimentFormModal({
               required
               value={testDate}
               onChange={(e) => handleFieldChange(setTestDate, e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-cyan-500"
+              className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-800 text-white text-xs focus:outline-none focus:border-white"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-white uppercase tracking-wider mb-1.5">
               Planned Duration (mins) *
             </label>
             <input
@@ -252,12 +252,12 @@ export function ExperimentFormModal({
               min={1}
               value={plannedDurationMinutes}
               onChange={(e) => handleFieldChange(setPlannedDurationMinutes, e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-cyan-500"
+              className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-800 text-white text-xs focus:outline-none focus:border-white"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-white uppercase tracking-wider mb-1.5">
               Actual Duration (mins)
             </label>
             <input
@@ -266,13 +266,13 @@ export function ExperimentFormModal({
               value={actualDurationMinutes}
               onChange={(e) => handleFieldChange(setActualDurationMinutes, e.target.value)}
               placeholder="e.g. 55"
-              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-cyan-500"
+              className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-800 text-white placeholder:text-neutral-500 text-xs focus:outline-none focus:border-white"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+          <label className="block text-xs font-semibold text-white uppercase tracking-wider mb-1.5">
             Protocol Notes & IoT Sensor Setup
           </label>
           <textarea
@@ -280,37 +280,37 @@ export function ExperimentFormModal({
             value={protocolNotes}
             onChange={(e) => handleFieldChange(setProtocolNotes, e.target.value)}
             placeholder="Sensor heater profile, sampling intervals, temperature calibration..."
-            className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-cyan-500"
+            className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-800 text-white placeholder:text-neutral-500 text-xs focus:outline-none focus:border-white"
           />
         </div>
 
         {/* Control Runs Section */}
-        <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-3">
+        <div className="p-4 rounded-lg bg-black border border-neutral-800 space-y-3">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-semibold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
-              <CheckCircle className="w-3.5 h-3.5" />
+            <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+              <CheckCircle className="w-3.5 h-3.5 text-white" />
               <span>Control Runs (Calibration & Baseline Verification)</span>
             </h4>
-            <span className="text-[10px] text-slate-500">ROOM & EMPTY_CONTAINER</span>
+            <span className="text-[10px] text-neutral-400 font-mono">ROOM & EMPTY_CONTAINER</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
             {/* ROOM control */}
-            <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+            <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800">
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={roomDone}
                   onChange={(e) => handleFieldChange(setRoomDone, e.target.checked)}
-                  className="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500"
+                  className="rounded border-neutral-700 bg-black text-white focus:ring-white"
                 />
-                <span className="text-xs font-medium text-slate-200">
+                <span className="text-xs font-medium text-white">
                   ROOM Baseline Completed
                 </span>
               </label>
               {roomDone && (
                 <div className="mt-2.5">
-                  <label className="block text-[11px] text-slate-400 mb-1">
+                  <label className="block text-[11px] text-neutral-300 mb-1">
                     Room Gas Resistance (kΩ)
                   </label>
                   <input
@@ -319,28 +319,28 @@ export function ExperimentFormModal({
                     value={roomBaseline}
                     onChange={(e) => handleFieldChange(setRoomBaseline, e.target.value)}
                     placeholder="e.g. 54.2"
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-cyan-500"
+                    className="w-full px-2.5 py-1.5 rounded bg-black border border-neutral-800 text-white placeholder:text-neutral-500 text-xs focus:outline-none focus:border-white"
                   />
                 </div>
               )}
             </div>
 
             {/* EMPTY_CONTAINER control */}
-            <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
+            <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800">
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={containerDone}
                   onChange={(e) => handleFieldChange(setContainerDone, e.target.checked)}
-                  className="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500"
+                  className="rounded border-neutral-700 bg-black text-white focus:ring-white"
                 />
-                <span className="text-xs font-medium text-slate-200">
+                <span className="text-xs font-medium text-white">
                   EMPTY_CONTAINER Completed
                 </span>
               </label>
               {containerDone && (
                 <div className="mt-2.5">
-                  <label className="block text-[11px] text-slate-400 mb-1">
+                  <label className="block text-[11px] text-neutral-300 mb-1">
                     Container Gas Resistance (kΩ)
                   </label>
                   <input
@@ -349,7 +349,7 @@ export function ExperimentFormModal({
                     value={containerBaseline}
                     onChange={(e) => handleFieldChange(setContainerBaseline, e.target.value)}
                     placeholder="e.g. 52.8"
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-cyan-500"
+                    className="w-full px-2.5 py-1.5 rounded bg-black border border-neutral-800 text-white placeholder:text-neutral-500 text-xs focus:outline-none focus:border-white"
                   />
                 </div>
               )}
@@ -362,12 +362,12 @@ export function ExperimentFormModal({
               value={controlNotes}
               onChange={(e) => handleFieldChange(setControlNotes, e.target.value)}
               placeholder="Control notes (e.g. chamber purged with dry air for 5 min)"
-              className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs focus:outline-none focus:border-cyan-500"
+              className="w-full px-3 py-1.5 rounded bg-black border border-neutral-800 text-white placeholder:text-neutral-500 text-xs focus:outline-none focus:border-white"
             />
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+        <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-800">
           <Button type="button" variant="ghost" size="sm" onClick={handleClose}>
             Cancel
           </Button>

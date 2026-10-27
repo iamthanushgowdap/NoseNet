@@ -36,13 +36,13 @@ export function SensorDataTable({ readings, onClearAll }: SensorDataTableProps) 
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-4">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+    <div className="bg-black border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-neutral-800">
         <div>
-          <h3 className="text-sm font-semibold text-slate-100">
+          <h3 className="text-sm font-bold text-white">
             Raw Sensor Readings Data Table
           </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-neutral-400 mt-0.5">
             Showing {readings.length} data points with verified ESP32 columns.
           </p>
         </div>
@@ -72,14 +72,14 @@ export function SensorDataTable({ readings, onClearAll }: SensorDataTableProps) 
       </div>
 
       {readings.length === 0 ? (
-        <div className="py-8 text-center text-xs text-slate-500">
+        <div className="py-8 text-center text-xs text-neutral-500">
           No readings to display in table.
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto border border-slate-800 rounded-xl bg-slate-950">
+          <div className="overflow-x-auto border border-neutral-800 rounded-lg bg-black">
             <table className="w-full text-left text-xs font-mono">
-              <thead className="bg-slate-900 text-slate-400 text-[11px] uppercase tracking-wider border-b border-slate-800">
+              <thead className="bg-neutral-950 text-neutral-300 text-[11px] uppercase tracking-wider border-b border-neutral-800 font-bold">
                 <tr>
                   <th className="py-2.5 px-3">Stage</th>
                   <th className="py-2.5 px-3">Elapsed (s)</th>
@@ -93,21 +93,21 @@ export function SensorDataTable({ readings, onClearAll }: SensorDataTableProps) 
                   <th className="py-2.5 px-3">Experiment</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/80 text-slate-300">
+              <tbody className="divide-y divide-neutral-800 text-white">
                 {paginatedReadings.map((r, i) => (
-                  <tr key={r.id || i} className="hover:bg-slate-800/40 transition-colors">
+                  <tr key={r.id || i} className="hover:bg-neutral-900/60 transition-colors">
                     <td className="py-2.5 px-3">
                       <StatusBadge status={r.stage} />
                     </td>
-                    <td className="py-2.5 px-3 font-semibold text-slate-100">{r.elapsedSeconds}</td>
-                    <td className="py-2.5 px-3 text-orange-400">{formatNumber(r.temperatureC, 2)}</td>
-                    <td className="py-2.5 px-3 text-blue-400">{formatNumber(r.humidityPercent, 2)}%</td>
-                    <td className="py-2.5 px-3 text-purple-400">{formatNumber(r.pressureHpa, 1)}</td>
-                    <td className="py-2.5 px-3 text-slate-400">{r.gasResistanceOhm.toLocaleString()}</td>
-                    <td className="py-2.5 px-3 font-bold text-cyan-400">{formatNumber(r.gasResistanceKohm, 3)}</td>
-                    <td className="py-2.5 px-3 text-slate-400">{r.status}</td>
-                    <td className="py-2.5 px-3 text-slate-400">{r.sampleId}</td>
-                    <td className="py-2.5 px-3 text-slate-500">{r.experimentId}</td>
+                    <td className="py-2.5 px-3 font-semibold text-white">{r.elapsedSeconds}</td>
+                    <td className="py-2.5 px-3 text-neutral-200">{formatNumber(r.temperatureC, 2)}</td>
+                    <td className="py-2.5 px-3 text-neutral-200">{formatNumber(r.humidityPercent, 2)}%</td>
+                    <td className="py-2.5 px-3 text-neutral-200">{formatNumber(r.pressureHpa, 1)}</td>
+                    <td className="py-2.5 px-3 text-neutral-400">{r.gasResistanceOhm.toLocaleString()}</td>
+                    <td className="py-2.5 px-3 font-bold text-white">{formatNumber(r.gasResistanceKohm, 3)}</td>
+                    <td className="py-2.5 px-3 text-neutral-300">{r.status}</td>
+                    <td className="py-2.5 px-3 text-neutral-300">{r.sampleId}</td>
+                    <td className="py-2.5 px-3 text-neutral-400">{r.experimentId}</td>
                   </tr>
                 ))}
               </tbody>
@@ -115,7 +115,7 @@ export function SensorDataTable({ readings, onClearAll }: SensorDataTableProps) 
           </div>
 
           {/* Pagination controls */}
-          <div className="flex items-center justify-between text-xs text-slate-400 pt-2">
+          <div className="flex items-center justify-between text-xs text-neutral-400 pt-2">
             <span>
               Page {currentPage} of {totalPages} ({readings.length} total rows)
             </span>

@@ -112,10 +112,10 @@ EXP-2026-001,SMP-NC-UF-01,CAKE,1,40,24.8,54.2,1012.2,40800,40.800,OK`;
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
-        className={`relative border-2 border-dashed rounded-2xl p-6 sm:p-8 text-center cursor-pointer transition-all ${
+        className={`relative border-2 border-dashed rounded-lg p-6 sm:p-8 text-center cursor-pointer transition-all ${
           isDragging
-            ? 'border-cyan-400 bg-cyan-950/20'
-            : 'border-slate-800 bg-slate-900/40 hover:border-slate-700 hover:bg-slate-900/60'
+            ? 'border-white bg-neutral-900'
+            : 'border-neutral-800 bg-black hover:border-neutral-600 hover:bg-neutral-950'
         }`}
       >
         <input
@@ -131,14 +131,14 @@ EXP-2026-001,SMP-NC-UF-01,CAKE,1,40,24.8,54.2,1012.2,40800,40.800,OK`;
         />
 
         <div className="flex flex-col items-center justify-center">
-          <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center mb-3">
+          <div className="w-12 h-12 rounded-lg bg-neutral-900 border border-neutral-700 text-white flex items-center justify-center mb-3">
             <Upload className="w-6 h-6" />
           </div>
 
-          <h3 className="text-sm font-semibold text-slate-100">
+          <h3 className="text-sm font-semibold text-white">
             Upload ESP32 Sensor CSV File
           </h3>
-          <p className="text-xs text-slate-400 max-w-md mt-1 mb-4 leading-relaxed">
+          <p className="text-xs text-neutral-400 max-w-md mt-1 mb-4 leading-relaxed">
             Drag & drop your CSV file here, or click to browse. Supports ROOM, EMPTY_CONTAINER, and CAKE stages.
           </p>
 
@@ -149,7 +149,7 @@ EXP-2026-001,SMP-NC-UF-01,CAKE,1,40,24.8,54.2,1012.2,40800,40.800,OK`;
               size="sm"
               onClick={() => fileInputRef.current?.click()}
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 mr-1 text-cyan-400" />
+              <FileSpreadsheet className="w-3.5 h-3.5 mr-1 text-white" />
               Browse Computer
             </Button>
 
@@ -158,7 +158,7 @@ EXP-2026-001,SMP-NC-UF-01,CAKE,1,40,24.8,54.2,1012.2,40800,40.800,OK`;
               variant="ghost"
               size="sm"
               onClick={handleDownloadSampleCsv}
-              className="text-slate-400 hover:text-slate-200"
+              className="text-neutral-400 hover:text-white"
             >
               <FileDown className="w-3.5 h-3.5 mr-1" />
               Download ESP32 CSV Template
@@ -178,49 +178,49 @@ EXP-2026-001,SMP-NC-UF-01,CAKE,1,40,24.8,54.2,1012.2,40800,40.800,OK`;
         >
           <div className="space-y-4">
             {importStatus && (
-              <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <div className="p-3.5 rounded-lg bg-neutral-900 border border-neutral-700 text-white text-xs flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-white" />
                 <span>{importStatus}</span>
               </div>
             )}
 
             {/* Summary Stat Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <span className="text-slate-500 block text-[11px]">Total Rows</span>
-                <span className="font-bold text-slate-100 text-base">{preview.totalRows}</span>
+              <div className="p-3 rounded-lg bg-black border border-neutral-800">
+                <span className="text-neutral-400 block text-[11px]">Total Rows</span>
+                <span className="font-bold text-white text-base">{preview.totalRows}</span>
               </div>
-              <div className="p-3 rounded-xl bg-slate-950 border border-emerald-500/30">
-                <span className="text-emerald-400 block text-[11px]">Valid Readings</span>
-                <span className="font-bold text-emerald-300 text-base">{preview.validRows.length}</span>
+              <div className="p-3 rounded-lg bg-black border border-neutral-700">
+                <span className="text-white block text-[11px]">Valid Readings</span>
+                <span className="font-bold text-white text-base">{preview.validRows.length}</span>
               </div>
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <span className="text-amber-400 block text-[11px]">Duplicates (Skipped)</span>
-                <span className="font-bold text-amber-300 text-base">{preview.duplicateCount}</span>
+              <div className="p-3 rounded-lg bg-black border border-neutral-800">
+                <span className="text-neutral-400 block text-[11px]">Duplicates (Skipped)</span>
+                <span className="font-bold text-neutral-300 text-base">{preview.duplicateCount}</span>
               </div>
-              <div className="p-3 rounded-xl bg-slate-950 border border-rose-500/30">
-                <span className="text-rose-400 block text-[11px]">Invalid Rows</span>
-                <span className="font-bold text-rose-300 text-base">{preview.invalidRows.length}</span>
+              <div className="p-3 rounded-lg bg-black border border-neutral-700">
+                <span className="text-neutral-400 block text-[11px]">Invalid Rows</span>
+                <span className="font-bold text-neutral-200 text-base">{preview.invalidRows.length}</span>
               </div>
             </div>
 
             {/* Detected metadata */}
-            <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs space-y-1.5">
+            <div className="p-3 rounded-lg bg-black border border-neutral-800 text-xs space-y-1.5">
               <div className="flex items-center gap-2">
-                <span className="text-slate-400">Experiments Detected:</span>
-                <span className="font-mono text-cyan-300">
+                <span className="text-neutral-400">Experiments Detected:</span>
+                <span className="font-mono text-white font-semibold">
                   {preview.detectedExperimentIds.join(', ') || 'None'}
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-slate-400">Samples Detected:</span>
-                <span className="font-mono text-cyan-300">
+                <span className="text-neutral-400">Samples Detected:</span>
+                <span className="font-mono text-white font-semibold">
                   {preview.detectedSampleIds.join(', ') || 'None'}
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-slate-400">Stages Present:</span>
-                <span className="font-mono text-slate-200">
+                <span className="text-neutral-400">Stages Present:</span>
+                <span className="font-mono text-neutral-200">
                   {preview.detectedStages.join(', ') || 'None'}
                 </span>
               </div>
@@ -228,19 +228,19 @@ EXP-2026-001,SMP-NC-UF-01,CAKE,1,40,24.8,54.2,1012.2,40800,40.800,OK`;
 
             {/* Invalid rows warning */}
             {preview.invalidRows.length > 0 && (
-              <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs space-y-2">
+              <div className="p-3.5 rounded-lg bg-neutral-900 border border-neutral-700 text-white text-xs space-y-2">
                 <div className="flex items-center gap-2 font-semibold">
-                  <XCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <XCircle className="w-4 h-4 shrink-0 text-white" />
                   <span>{preview.invalidRows.length} rows failed schema validation</span>
                 </div>
-                <div className="max-h-36 overflow-y-auto space-y-1 font-mono text-[11px] text-rose-400 pr-1">
+                <div className="max-h-36 overflow-y-auto space-y-1 font-mono text-[11px] text-neutral-300 pr-1">
                   {preview.invalidRows.slice(0, 10).map((inv, idx) => (
-                    <div key={idx} className="bg-slate-950/60 p-1.5 rounded border border-rose-900/50">
+                    <div key={idx} className="bg-black p-1.5 rounded border border-neutral-800">
                       Row {inv.rowNumber}: {inv.errors.join('; ')}
                     </div>
                   ))}
                   {preview.invalidRows.length > 10 && (
-                    <div className="text-slate-400 text-center py-1">
+                    <div className="text-neutral-500 text-center py-1">
                       ...and {preview.invalidRows.length - 10} more invalid rows
                     </div>
                   )}
@@ -251,12 +251,12 @@ EXP-2026-001,SMP-NC-UF-01,CAKE,1,40,24.8,54.2,1012.2,40800,40.800,OK`;
             {/* Sample preview table */}
             {preview.validRows.length > 0 && (
               <div>
-                <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                <h4 className="text-xs font-semibold text-white uppercase tracking-wider mb-2">
                   First 3 Valid Rows
                 </h4>
-                <div className="overflow-x-auto border border-slate-800 rounded-xl bg-slate-950">
+                <div className="overflow-x-auto border border-neutral-800 rounded-lg bg-black">
                   <table className="w-full text-left text-[11px] font-mono">
-                    <thead className="bg-slate-900 text-slate-400 border-b border-slate-800">
+                    <thead className="bg-neutral-950 text-neutral-300 border-b border-neutral-800 font-bold">
                       <tr>
                         <th className="p-2">Stage</th>
                         <th className="p-2">Elapsed (s)</th>
@@ -266,14 +266,14 @@ EXP-2026-001,SMP-NC-UF-01,CAKE,1,40,24.8,54.2,1012.2,40800,40.800,OK`;
                         <th className="p-2">Status</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800 text-slate-300">
+                    <tbody className="divide-y divide-neutral-800 text-white">
                       {preview.validRows.slice(0, 3).map((r, i) => (
                         <tr key={i}>
-                          <td className="p-2 text-cyan-400">{r.stage}</td>
+                          <td className="p-2 font-semibold text-white">{r.stage}</td>
                           <td className="p-2">{r.elapsedSeconds}</td>
                           <td className="p-2">{r.temperatureC}</td>
                           <td className="p-2">{r.humidityPercent}</td>
-                          <td className="p-2 text-emerald-400">{r.gasResistanceKohm}</td>
+                          <td className="p-2 font-bold text-white">{r.gasResistanceKohm}</td>
                           <td className="p-2">{r.status}</td>
                         </tr>
                       ))}
@@ -283,7 +283,7 @@ EXP-2026-001,SMP-NC-UF-01,CAKE,1,40,24.8,54.2,1012.2,40800,40.800,OK`;
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-800">
               <Button
                 variant="ghost"
                 size="sm"

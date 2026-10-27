@@ -15,7 +15,7 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
     | 'testing'
     | 'invalid'
     | 'stage'
-    | 'cyan'
+    | 'white'
     | 'outline';
   size?: 'sm' | 'md';
 }
@@ -28,42 +28,42 @@ export function Badge({
   ...props
 }: BadgeProps) {
   const baseClasses =
-    'inline-flex items-center font-medium rounded-full tracking-wide select-none transition-colors';
+    'inline-flex items-center font-semibold rounded-md tracking-wider uppercase select-none transition-colors';
 
   const sizeClasses = {
-    sm: 'text-[11px] px-2 py-0.5 gap-1',
-    md: 'text-xs px-2.5 py-0.5 gap-1.5',
+    sm: 'text-[10px] px-2 py-0.5 gap-1',
+    md: 'text-xs px-2.5 py-1 gap-1.5',
   };
 
   const variantClasses = {
     default:
-      'bg-slate-800 text-slate-300 border border-slate-700 dark:bg-slate-800/80 dark:text-slate-300',
+      'bg-black text-white border border-neutral-700',
     fresh:
-      'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300',
+      'bg-black text-white border border-neutral-600',
     average:
-      'bg-amber-500/10 text-amber-400 border border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300',
+      'bg-black text-white border border-neutral-600',
     'not-good':
-      'bg-rose-500/10 text-rose-400 border border-rose-500/30 dark:bg-rose-950/40 dark:text-rose-300',
+      'bg-black text-white border border-neutral-600',
     active:
-      'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 dark:bg-cyan-950/40 dark:text-cyan-300',
+      'bg-white text-black font-bold border border-white',
     completed:
-      'bg-emerald-500/10 text-emerald-300 border border-emerald-500/25',
+      'bg-black text-white border border-neutral-600',
     draft:
-      'bg-slate-700/30 text-slate-400 border border-slate-700/50',
+      'bg-black text-neutral-300 border border-neutral-700',
     archived:
-      'bg-slate-800/50 text-slate-500 border border-slate-700/40',
+      'bg-black text-neutral-400 border border-neutral-800',
     planned:
-      'bg-blue-500/10 text-blue-400 border border-blue-500/30',
+      'bg-black text-white border border-neutral-600',
     testing:
-      'bg-amber-500/15 text-amber-300 border border-amber-500/40 animate-pulse',
+      'bg-black text-white border border-neutral-500 animate-pulse',
     invalid:
-      'bg-rose-500/10 text-rose-400 border border-rose-500/30',
+      'bg-black text-white border border-neutral-600',
     stage:
-      'bg-purple-500/10 text-purple-300 border border-purple-500/30',
-    cyan:
-      'bg-cyan-500/20 text-cyan-200 border border-cyan-400/30',
+      'bg-black text-white border border-neutral-700',
+    white:
+      'bg-white text-black font-bold border border-white',
     outline:
-      'bg-transparent text-slate-400 border border-slate-700',
+      'bg-black text-white border border-neutral-700',
   };
 
   return (
@@ -100,7 +100,7 @@ export function StatusBadge({ status }: { status: string }) {
     case 'EMPTY_CONTAINER':
       return <Badge variant="stage">CONTAINER</Badge>;
     case 'CAKE':
-      return <Badge variant="cyan">CAKE</Badge>;
+      return <Badge variant="white">CAKE</Badge>;
     default:
       return <Badge variant="default">{status}</Badge>;
   }

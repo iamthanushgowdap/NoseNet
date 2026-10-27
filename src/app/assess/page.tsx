@@ -124,23 +124,23 @@ function AssessmentTerminal() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 w-full space-y-6">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 w-full space-y-6 bg-black text-white">
       {/* Second Phone Architecture Disclosure Banner */}
-      <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-xs text-slate-300 space-y-2">
+      <div className="p-4 rounded-lg bg-black border border-neutral-800 text-xs text-neutral-300 space-y-2">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
-            <Smartphone className="w-4 h-4 text-cyan-400 shrink-0" />
-            <h2 className="font-semibold text-slate-100 text-sm">
+            <Smartphone className="w-4 h-4 text-white shrink-0" />
+            <h2 className="font-bold text-white text-sm">
               Mobile Assessor Terminal (Second-Phone Ready)
             </h2>
           </div>
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-900 text-white border border-neutral-750">
             Phase 1: Local Storage Session
           </span>
         </div>
 
-        <p className="text-slate-400 text-xs leading-relaxed">
-          <strong>Important Architecture Notice:</strong> Browser localStorage is isolated per device and browser profile.
+        <p className="text-neutral-400 text-xs leading-relaxed">
+          <strong className="text-white">Important Architecture Notice:</strong> Browser localStorage is isolated per device and browser profile.
           In this local development version, assessments saved on this device persist in this browser. True real-time
           synchronization between separate physical phones will be enabled in Phase 2 via a shared WebSocket / REST backend.
           Assessment interfaces and services are fully modular to allow instantaneous transition without rewriting.
@@ -148,13 +148,13 @@ function AssessmentTerminal() {
       </div>
 
       {/* Assessor Name Configuration */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+      <div className="bg-black border border-neutral-800 rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
-            <Users className="w-5 h-5" />
+          <div className="w-10 h-10 rounded-lg bg-neutral-900 border border-neutral-700 text-white flex items-center justify-center shrink-0">
+            <Users className="w-5 h-5 text-white" />
           </div>
           <div>
-            <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+            <label className="text-[11px] font-bold text-white uppercase tracking-wider block">
               Assessor Identity
             </label>
             <input
@@ -162,23 +162,23 @@ function AssessmentTerminal() {
               value={assessorName}
               onChange={(e) => setAssessorName(e.target.value)}
               placeholder="e.g. Dr. Sharma or Student Assessor"
-              className="mt-0.5 px-3 py-1 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-100 font-medium focus:outline-none focus:border-cyan-500"
+              className="mt-0.5 px-3 py-1.5 rounded-lg bg-black border border-neutral-800 text-xs text-white font-medium focus:outline-none focus:border-white"
             />
           </div>
         </div>
 
         {/* Sample Selector */}
         <div className="flex-1 max-w-sm">
-          <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+          <label className="text-[11px] font-bold text-white uppercase tracking-wider block mb-1">
             Choose Specimen To Evaluate
           </label>
           <select
             value={selectedSampleId}
             onChange={(e) => setSelectedSampleId(e.target.value)}
-            className="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-100 font-mono focus:outline-none focus:border-cyan-500"
+            className="w-full px-3 py-1.5 rounded-lg bg-black border border-neutral-800 text-xs text-white font-mono focus:outline-none focus:border-white"
           >
             {samples.map((s) => (
-              <option key={s.id} value={s.id}>
+              <option key={s.id} value={s.id} className="bg-black text-white">
                 {s.id} — {s.category} ({s.storageCondition})
               </option>
             ))}
@@ -188,16 +188,16 @@ function AssessmentTerminal() {
 
       {feedbackMessage && (
         <div
-          className={`p-3.5 rounded-xl text-xs flex items-center gap-2 ${
+          className={`p-3.5 rounded-lg text-xs flex items-center gap-2 border ${
             feedbackMessage.type === 'success'
-              ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
-              : 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
+              ? 'bg-neutral-900 border-neutral-600 text-white'
+              : 'bg-neutral-900 border-neutral-600 text-white'
           }`}
         >
           {feedbackMessage.type === 'success' ? (
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-white" />
           ) : (
-            <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+            <AlertTriangle className="w-4 h-4 shrink-0 text-white" />
           )}
           <span>{feedbackMessage.text}</span>
         </div>
@@ -205,43 +205,43 @@ function AssessmentTerminal() {
 
       {/* Main Specimen & Assessment Submission Card */}
       {activeSample ? (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-7 space-y-6">
+        <div className="bg-black border border-neutral-800 rounded-lg p-5 sm:p-7 space-y-6">
           {/* Sample Information Header */}
-          <div className="pb-5 border-b border-slate-800">
+          <div className="pb-5 border-b border-neutral-800">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <span className="font-mono text-base font-bold text-cyan-400">
+              <span className="font-mono text-base font-bold text-white">
                 {activeSample.id}
               </span>
               <div className="flex items-center gap-2">
                 <StatusBadge status={activeSample.status} />
-                <span className="text-xs text-slate-500 font-mono">
+                <span className="text-xs text-neutral-400 font-mono">
                   {formatDate(activeSample.testDateTime)}
                 </span>
               </div>
             </div>
 
             <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
-                <span className="text-slate-500 text-[10px] block uppercase">Cake Category</span>
-                <span className="font-semibold text-slate-200 mt-0.5 block">{activeSample.category}</span>
+              <div className="p-2.5 rounded-lg bg-neutral-950 border border-neutral-800">
+                <span className="text-neutral-400 text-[10px] block uppercase font-bold">Cake Category</span>
+                <span className="font-semibold text-white mt-0.5 block">{activeSample.category}</span>
               </div>
-              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
-                <span className="text-slate-500 text-[10px] block uppercase">Storage</span>
-                <span className="font-semibold text-amber-300 mt-0.5 block">{activeSample.storageCondition}</span>
+              <div className="p-2.5 rounded-lg bg-neutral-950 border border-neutral-800">
+                <span className="text-neutral-400 text-[10px] block uppercase font-bold">Storage</span>
+                <span className="font-semibold text-white mt-0.5 block">{activeSample.storageCondition}</span>
               </div>
-              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
-                <span className="text-slate-500 text-[10px] block uppercase">Replicate</span>
-                <span className="font-semibold text-slate-200 mt-0.5 block">{activeSample.replicateNumber}</span>
+              <div className="p-2.5 rounded-lg bg-neutral-950 border border-neutral-800">
+                <span className="text-neutral-400 text-[10px] block uppercase font-bold">Replicate</span>
+                <span className="font-semibold text-white mt-0.5 block">{activeSample.replicateNumber}</span>
               </div>
-              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
-                <span className="text-slate-500 text-[10px] block uppercase">Experiment</span>
-                <span className="font-semibold text-cyan-300 mt-0.5 block font-mono">{activeSample.experimentId}</span>
+              <div className="p-2.5 rounded-lg bg-neutral-950 border border-neutral-800">
+                <span className="text-neutral-400 text-[10px] block uppercase font-bold">Experiment</span>
+                <span className="font-semibold text-white mt-0.5 block font-mono">{activeSample.experimentId}</span>
               </div>
             </div>
 
             {activeSample.notes && (
-              <div className="mt-3 p-3 rounded-xl bg-slate-950/60 border border-slate-800/60 text-xs text-slate-400">
-                <strong className="text-slate-300">Sample Notes:</strong> {activeSample.notes}
+              <div className="mt-3 p-3 rounded-lg bg-neutral-950 border border-neutral-800 text-xs text-neutral-300">
+                <strong className="text-white">Sample Notes:</strong> {activeSample.notes}
               </div>
             )}
           </div>
@@ -249,10 +249,10 @@ function AssessmentTerminal() {
           {/* Three Large Touch Targets for Assessor */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-300">
+              <label className="text-xs font-bold uppercase tracking-wider text-white">
                 Step 1: Select Sensory Quality Verdict *
               </label>
-              <span className="text-[11px] text-slate-500">Select exactly one</span>
+              <span className="text-[11px] text-neutral-400">Select exactly one</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -260,19 +260,19 @@ function AssessmentTerminal() {
               <button
                 type="button"
                 onClick={() => handleOpenConfirm('Fresh')}
-                className="group relative p-5 rounded-2xl border transition-all text-left flex flex-col justify-between bg-emerald-950/20 border-emerald-500/30 hover:border-emerald-400 hover:bg-emerald-950/40 active:scale-[0.98]"
+                className="group relative p-5 rounded-lg border border-neutral-800 transition-all text-left flex flex-col justify-between bg-black hover:bg-neutral-900 hover:border-white active:scale-[0.98]"
               >
                 <div className="flex items-center justify-between mb-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center border border-emerald-500/30 group-hover:scale-110 transition-transform">
-                    <ThumbsUp className="w-5 h-5" />
+                  <div className="w-10 h-10 rounded-lg bg-neutral-900 text-white flex items-center justify-center border border-neutral-700 group-hover:border-white transition-all">
+                    <ThumbsUp className="w-5 h-5 text-white" />
                   </div>
-                  <span className="text-[11px] uppercase font-bold tracking-wider text-emerald-400">
+                  <span className="text-[11px] uppercase font-bold tracking-wider text-neutral-300">
                     Grade A
                   </span>
                 </div>
                 <div>
-                  <h4 className="text-lg font-bold text-emerald-300">Fresh</h4>
-                  <p className="text-xs text-slate-400 mt-1 leading-snug">
+                  <h4 className="text-lg font-bold text-white">Fresh</h4>
+                  <p className="text-xs text-neutral-400 mt-1 leading-snug">
                     Natural pleasant bakery aroma, no off-flavor, optimal crumb moisture.
                   </p>
                 </div>
@@ -282,19 +282,19 @@ function AssessmentTerminal() {
               <button
                 type="button"
                 onClick={() => handleOpenConfirm('Average')}
-                className="group relative p-5 rounded-2xl border transition-all text-left flex flex-col justify-between bg-amber-950/20 border-amber-500/30 hover:border-amber-400 hover:bg-amber-950/40 active:scale-[0.98]"
+                className="group relative p-5 rounded-lg border border-neutral-800 transition-all text-left flex flex-col justify-between bg-black hover:bg-neutral-900 hover:border-white active:scale-[0.98]"
               >
                 <div className="flex items-center justify-between mb-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center border border-amber-500/30 group-hover:scale-110 transition-transform">
-                    <MinusCircle className="w-5 h-5" />
+                  <div className="w-10 h-10 rounded-lg bg-neutral-900 text-white flex items-center justify-center border border-neutral-700 group-hover:border-white transition-all">
+                    <MinusCircle className="w-5 h-5 text-white" />
                   </div>
-                  <span className="text-[11px] uppercase font-bold tracking-wider text-amber-400">
+                  <span className="text-[11px] uppercase font-bold tracking-wider text-neutral-300">
                     Grade B
                   </span>
                 </div>
                 <div>
-                  <h4 className="text-lg font-bold text-amber-300">Average</h4>
-                  <p className="text-xs text-slate-400 mt-1 leading-snug">
+                  <h4 className="text-lg font-bold text-white">Average</h4>
+                  <p className="text-xs text-neutral-400 mt-1 leading-snug">
                     Marginal staling, muted aroma, dryness at edges, borderline acceptability.
                   </p>
                 </div>
@@ -304,19 +304,19 @@ function AssessmentTerminal() {
               <button
                 type="button"
                 onClick={() => handleOpenConfirm('Not Good')}
-                className="group relative p-5 rounded-2xl border transition-all text-left flex flex-col justify-between bg-rose-950/20 border-rose-500/30 hover:border-rose-400 hover:bg-rose-950/40 active:scale-[0.98]"
+                className="group relative p-5 rounded-lg border border-neutral-800 transition-all text-left flex flex-col justify-between bg-black hover:bg-neutral-900 hover:border-white active:scale-[0.98]"
               >
                 <div className="flex items-center justify-between mb-3">
-                  <div className="w-10 h-10 rounded-xl bg-rose-500/15 text-rose-400 flex items-center justify-center border border-rose-500/30 group-hover:scale-110 transition-transform">
-                    <ThumbsDown className="w-5 h-5" />
+                  <div className="w-10 h-10 rounded-lg bg-neutral-900 text-white flex items-center justify-center border border-neutral-700 group-hover:border-white transition-all">
+                    <ThumbsDown className="w-5 h-5 text-white" />
                   </div>
-                  <span className="text-[11px] uppercase font-bold tracking-wider text-rose-400">
+                  <span className="text-[11px] uppercase font-bold tracking-wider text-neutral-300">
                     Grade C
                   </span>
                 </div>
                 <div>
-                  <h4 className="text-lg font-bold text-rose-300">Not Good</h4>
-                  <p className="text-xs text-slate-400 mt-1 leading-snug">
+                  <h4 className="text-lg font-bold text-white">Not Good</h4>
+                  <p className="text-xs text-neutral-400 mt-1 leading-snug">
                     Off-odor, rancidity, sour cream notes, or microbial degradation detected.
                   </p>
                 </div>
@@ -325,14 +325,14 @@ function AssessmentTerminal() {
           </div>
 
           {/* Optional Evaluation Parameters */}
-          <div className="pt-4 border-t border-slate-800 space-y-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+          <div className="pt-4 border-t border-neutral-800 space-y-4">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-white">
               Step 2: Optional Confidence & Olfactory Notes
             </h4>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs text-slate-400 mb-1.5 block">
+                <label className="text-xs text-neutral-300 mb-1.5 block">
                   Confidence Rating (1 to 5 Stars):
                 </label>
                 <div className="flex items-center gap-2">
@@ -341,25 +341,25 @@ function AssessmentTerminal() {
                       key={star}
                       type="button"
                       onClick={() => setConfidence(star)}
-                      className="p-1 rounded-lg hover:bg-slate-800 transition-colors"
+                      className="p-1 rounded hover:bg-neutral-900 transition-colors"
                     >
                       <Star
                         className={`w-5 h-5 ${
                           star <= confidence
-                            ? 'text-amber-400 fill-amber-400'
-                            : 'text-slate-600'
+                            ? 'text-white fill-white'
+                            : 'text-neutral-700'
                         }`}
                       />
                     </button>
                   ))}
-                  <span className="text-xs text-slate-400 font-mono ml-2">
+                  <span className="text-xs text-white font-mono ml-2">
                     {confidence} / 5
                   </span>
                 </div>
               </div>
 
               <div>
-                <label className="text-xs text-slate-400 mb-1.5 block">
+                <label className="text-xs text-neutral-300 mb-1.5 block">
                   Olfactory & Crumb Notes:
                 </label>
                 <input
@@ -367,17 +367,17 @@ function AssessmentTerminal() {
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="e.g. Mild buttery aroma, slight crust hardening..."
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-100 focus:outline-none focus:border-cyan-500"
+                  className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-800 text-xs text-white placeholder:text-neutral-500 focus:outline-none focus:border-white"
                 />
               </div>
             </div>
           </div>
 
           {/* Sensory Disclaimer */}
-          <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-[11px] text-slate-500 flex items-start gap-2">
-            <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+          <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800 text-[11px] text-neutral-400 flex items-start gap-2">
+            <Info className="w-4 h-4 text-white shrink-0 mt-0.5" />
             <span>
-              <strong>Scientific Disclaimer:</strong> Manual sensory labels reflect human organoleptic observations and
+              <strong className="text-white">Scientific Disclaimer:</strong> Manual sensory labels reflect human organoleptic observations and
               panelist consensus. They serve as human ground truth for pattern correlation and do not substitute for
               official microbiological lab assays.
             </span>
@@ -395,14 +395,14 @@ function AssessmentTerminal() {
 
       {/* Evaluation History & Disagreement Analysis */}
       {activeSample && summary && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800 flex-wrap gap-2">
+        <div className="bg-black border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-neutral-800 flex-wrap gap-2">
             <div className="flex items-center gap-2">
-              <History className="w-4 h-4 text-cyan-400" />
-              <h3 className="text-sm font-semibold text-slate-100">
+              <History className="w-4 h-4 text-white" />
+              <h3 className="text-sm font-bold text-white">
                 Sensory Evaluation History for {activeSample.id}
               </h3>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+              <span className="text-xs px-2 py-0.5 rounded-full bg-neutral-900 text-white border border-neutral-700">
                 {summary.totalAssessments} {summary.totalAssessments === 1 ? 'assessment' : 'assessments'}
               </span>
             </div>
@@ -420,10 +420,10 @@ function AssessmentTerminal() {
 
           {/* Disagreement Warning Banner */}
           {summary.hasDisagreement && (
-            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2.5">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="p-3.5 rounded-lg bg-neutral-900 border border-neutral-700 text-white text-xs flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-white shrink-0 mt-0.5" />
               <div>
-                <strong className="text-amber-200">Panel Disagreement Detected:</strong> Assessors have logged
+                <strong className="text-white">Panel Disagreement Detected:</strong> Assessors have logged
                 conflicting sensory evaluations for this sample (labels: {summary.distinctLabels.join(', ')}).
                 All individual records are preserved in full history without overwriting.
               </div>
@@ -431,7 +431,7 @@ function AssessmentTerminal() {
           )}
 
           {summary.allAssessments.length === 0 ? (
-            <div className="py-6 text-center text-xs text-slate-500">
+            <div className="py-6 text-center text-xs text-neutral-500">
               No sensory evaluations logged for this sample yet. Click Fresh, Average, or Not Good above to submit.
             </div>
           ) : (
@@ -439,25 +439,25 @@ function AssessmentTerminal() {
               {summary.allAssessments.map((a) => (
                 <div
                   key={a.id}
-                  className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+                  className="p-3 rounded-lg bg-neutral-950 border border-neutral-800 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
                 >
                   <div className="flex items-center gap-3">
                     <StatusBadge status={a.label} />
                     <div>
-                      <div className="font-semibold text-slate-200">
+                      <div className="font-semibold text-white">
                         {a.assessorName}
                       </div>
                       {a.notes && (
-                        <p className="text-slate-400 text-[11px] italic mt-0.5">
+                        <p className="text-neutral-400 text-[11px] italic mt-0.5">
                           &ldquo;{a.notes}&rdquo;
                         </p>
                       )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4 text-[11px] text-slate-400 shrink-0 self-end sm:self-auto font-mono">
+                  <div className="flex items-center gap-4 text-[11px] text-neutral-400 shrink-0 self-end sm:self-auto font-mono">
                     {a.confidenceRating && (
-                      <span className="text-amber-400">
+                      <span className="text-white">
                         ★ {a.confidenceRating} / 5
                       </span>
                     )}
@@ -486,7 +486,7 @@ function AssessmentTerminal() {
 
 export default function AssessPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-slate-400">Loading terminal...</div>}>
+    <Suspense fallback={<div className="p-8 text-center text-neutral-400">Loading terminal...</div>}>
       <AssessmentTerminal />
     </Suspense>
   );

@@ -68,15 +68,15 @@ function SensorContent() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-6 bg-black text-white">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-neutral-800">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-100 flex items-center gap-2.5">
-            <LineChart className="w-6 h-6 text-cyan-400" />
+          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
+            <LineChart className="w-6 h-6 text-white" />
             <span>Sensor Ingestion & Visualizations</span>
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-neutral-400 mt-1">
             Recharts time-series analytics for ESP32 metal oxide gas resistance, temperature, humidity, and barometric pressure.
           </p>
         </div>
@@ -96,10 +96,10 @@ function SensorContent() {
       />
 
       {/* Filter Toolbar */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+      <div className="bg-black border border-neutral-800 rounded-lg p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-cyan-400 shrink-0" />
-          <span className="text-xs font-semibold text-slate-200 uppercase tracking-wider">
+          <Filter className="w-4 h-4 text-white shrink-0" />
+          <span className="text-xs font-bold text-white uppercase tracking-wider">
             Graph Filters:
           </span>
         </div>
@@ -110,11 +110,11 @@ function SensorContent() {
             <select
               value={filterExp}
               onChange={(e) => setFilterExp(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+              className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-800 text-xs text-white focus:outline-none focus:border-white font-mono"
             >
-              <option value="ALL">All Experiments</option>
+              <option value="ALL" className="bg-black text-white">All Experiments</option>
               {availableExperiments.map((id) => (
-                <option key={id} value={id}>
+                <option key={id} value={id} className="bg-black text-white">
                   Exp: {id}
                 </option>
               ))}
@@ -126,11 +126,11 @@ function SensorContent() {
             <select
               value={filterSample}
               onChange={(e) => setFilterSample(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+              className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-800 text-xs text-white focus:outline-none focus:border-white font-mono"
             >
-              <option value="ALL">All Samples</option>
+              <option value="ALL" className="bg-black text-white">All Samples</option>
               {availableSamples.map((id) => (
-                <option key={id} value={id}>
+                <option key={id} value={id} className="bg-black text-white">
                   Sample: {id}
                 </option>
               ))}
@@ -142,12 +142,12 @@ function SensorContent() {
             <select
               value={filterStage}
               onChange={(e) => setFilterStage(e.target.value as SensorStage | 'ALL')}
-              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+              className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-800 text-xs text-white focus:outline-none focus:border-white"
             >
-              <option value="ALL">All Stages (ROOM + CONT + CAKE)</option>
-              <option value="ROOM">ROOM Stage Baseline</option>
-              <option value="EMPTY_CONTAINER">EMPTY_CONTAINER Baseline</option>
-              <option value="CAKE">CAKE Headspace Testing</option>
+              <option value="ALL" className="bg-black text-white">All Stages (ROOM + CONT + CAKE)</option>
+              <option value="ROOM" className="bg-black text-white">ROOM Stage Baseline</option>
+              <option value="EMPTY_CONTAINER" className="bg-black text-white">EMPTY_CONTAINER Baseline</option>
+              <option value="CAKE" className="bg-black text-white">CAKE Headspace Testing</option>
             </select>
           </div>
         </div>
@@ -182,7 +182,7 @@ function SensorContent() {
 
 export default function SensorPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-slate-400">Loading sensor analytics...</div>}>
+    <Suspense fallback={<div className="p-8 text-center text-neutral-400">Loading sensor analytics...</div>}>
       <SensorContent />
     </Suspense>
   );

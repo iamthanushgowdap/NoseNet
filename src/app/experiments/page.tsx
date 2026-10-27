@@ -85,44 +85,44 @@ export default function ExperimentsPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full bg-black text-white space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-slate-800 mb-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-neutral-800">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-100 flex items-center gap-2.5">
-            <FlaskConical className="w-6 h-6 text-cyan-400" />
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white flex items-center gap-2.5">
+            <FlaskConical className="w-6 h-6 text-white" />
             <span>Experiment Protocols</span>
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-neutral-300 mt-1">
             Manage electronic nose cake testing runs, control baselines (ROOM / EMPTY_CONTAINER), and protocol notes.
           </p>
         </div>
 
         <Button variant="primary" size="sm" onClick={handleOpenCreate}>
-          <Plus className="w-4 h-4 mr-1.5" />
+          <Plus className="w-4 h-4 mr-1.5 text-black" />
           <span>New Experiment</span>
         </Button>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search experiments by ID, title, or keywords..."
-            className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+            className="w-full pl-9 pr-3.5 py-2 rounded-md bg-neutral-950 border border-neutral-800 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-white"
           />
         </div>
 
         <div className="flex items-center gap-2">
-          <Filter className="w-3.5 h-3.5 text-slate-400" />
+          <Filter className="w-3.5 h-3.5 text-neutral-400" />
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+            className="px-3 py-2 rounded-md bg-neutral-950 border border-neutral-800 text-xs text-white focus:outline-none focus:border-white"
           >
             <option value="ALL">All Statuses</option>
             <option value="Active">Active</option>
@@ -133,7 +133,7 @@ export default function ExperimentsPage() {
         </div>
       </div>
 
-      {/* Experiments Grid / List */}
+      {/* Experiments Grid */}
       {filteredExperiments.length === 0 ? (
         <EmptyState
           icon={FlaskConical}
@@ -158,51 +158,47 @@ export default function ExperimentsPage() {
           {filteredExperiments.map((exp) => (
             <div
               key={exp.id}
-              className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5 hover:border-slate-700/80 transition-all flex flex-col justify-between"
+              className="bg-black border border-neutral-800 rounded-xl p-5 hover:border-neutral-600 transition-colors flex flex-col justify-between text-white"
             >
               <div>
-                <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-800/80 mb-3">
-                  <span className="font-mono text-xs font-semibold text-cyan-400">
+                <div className="flex items-center justify-between gap-2 pb-3 border-b border-neutral-800 mb-3">
+                  <span className="font-mono text-xs font-bold text-white">
                     {exp.id}
                   </span>
                   <StatusBadge status={exp.status} />
                 </div>
 
-                <h3 className="text-base font-semibold text-slate-100 hover:text-cyan-300 transition-colors">
+                <h3 className="text-base font-bold text-white hover:underline transition-colors">
                   <Link href={`/experiments/${exp.id}`}>{exp.name}</Link>
                 </h3>
 
-                <p className="text-xs text-slate-400 mt-1.5 line-clamp-2 leading-relaxed">
+                <p className="text-xs text-neutral-300 mt-1.5 line-clamp-2 leading-relaxed">
                   {exp.description || 'No description provided.'}
                 </p>
 
                 {/* Control verification indicators */}
-                <div className="mt-4 pt-3 border-t border-slate-800/60 grid grid-cols-2 gap-2 text-[11px]">
-                  <div className="flex items-center gap-1.5 text-slate-400">
+                <div className="mt-4 pt-3 border-t border-neutral-800 grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="flex items-center gap-1.5 text-neutral-300">
                     <CheckCircle2
                       className={`w-3.5 h-3.5 ${
-                        exp.controls.roomStageCompleted
-                          ? 'text-emerald-400'
-                          : 'text-slate-600'
+                        exp.controls.roomStageCompleted ? 'text-white' : 'text-neutral-600'
                       }`}
                     />
-                    <span>ROOM: {exp.controls.roomStageCompleted ? 'Done' : 'Pending'}</span>
+                    <span>ROOM: {exp.controls.roomStageCompleted ? 'Verified' : 'Pending'}</span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-slate-400">
+                  <div className="flex items-center gap-1.5 text-neutral-300">
                     <CheckCircle2
                       className={`w-3.5 h-3.5 ${
-                        exp.controls.emptyContainerStageCompleted
-                          ? 'text-emerald-400'
-                          : 'text-slate-600'
+                        exp.controls.emptyContainerStageCompleted ? 'text-white' : 'text-neutral-600'
                       }`}
                     />
-                    <span>CONT: {exp.controls.emptyContainerStageCompleted ? 'Done' : 'Pending'}</span>
+                    <span>CONT: {exp.controls.emptyContainerStageCompleted ? 'Verified' : 'Pending'}</span>
                   </div>
                 </div>
 
-                <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400">
-                  <span className="flex items-center gap-1">
-                    <Layers className="w-3.5 h-3.5 text-slate-500" />
+                <div className="mt-3 flex items-center justify-between text-[11px] text-neutral-400">
+                  <span className="flex items-center gap-1 text-white">
+                    <Layers className="w-3.5 h-3.5 text-white" />
                     <span>{exp.sampleIds.length} Samples</span>
                   </span>
                   <span>Date: {exp.testDate}</span>
@@ -210,19 +206,19 @@ export default function ExperimentsPage() {
               </div>
 
               {/* Action buttons */}
-              <div className="mt-5 pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
+              <div className="mt-5 pt-3 border-t border-neutral-800 flex items-center justify-between gap-2">
                 <Link
                   href={`/experiments/${exp.id}`}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-colors"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold border border-neutral-700 transition-colors"
                 >
-                  <Eye className="w-3.5 h-3.5 text-cyan-400" />
+                  <Eye className="w-3.5 h-3.5 text-white" />
                   <span>View Details</span>
                 </Link>
 
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => handleOpenEdit(exp)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                    className="p-1.5 rounded-md text-neutral-400 hover:text-white hover:bg-neutral-900 transition-colors"
                     title="Edit Experiment"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
@@ -230,7 +226,7 @@ export default function ExperimentsPage() {
                   {exp.status !== 'Archived' && (
                     <button
                       onClick={() => setConfirmArchiveId(exp.id)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition-colors"
+                      className="p-1.5 rounded-md text-neutral-400 hover:text-amber-400 hover:bg-neutral-900 transition-colors"
                       title="Archive Experiment"
                     >
                       <Archive className="w-3.5 h-3.5" />
@@ -238,7 +234,7 @@ export default function ExperimentsPage() {
                   )}
                   <button
                     onClick={() => setConfirmDeleteId(exp.id)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                    className="p-1.5 rounded-md text-neutral-400 hover:text-rose-400 hover:bg-neutral-900 transition-colors"
                     title="Delete Experiment"
                   >
                     <Trash2 className="w-3.5 h-3.5" />

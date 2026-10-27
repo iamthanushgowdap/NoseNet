@@ -20,14 +20,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className="bg-slate-950 text-slate-100 flex flex-col min-h-screen selection:bg-cyan-500/30 selection:text-cyan-200">
+      <body className="bg-black text-white flex flex-col min-h-screen selection:bg-neutral-800 selection:text-white">
         <ThemeProvider>
           <AppProvider>
             <RoleBanner />
-            <Suspense fallback={<div className="h-16 border-b border-slate-800 bg-slate-950" />}>
+            <Suspense fallback={<div className="h-16 border-b border-neutral-800 bg-black" />}>
               <Navbar />
             </Suspense>
-            <main className="flex-1 flex flex-col">{children}</main>
+            <main className="flex-1 flex flex-col bg-black text-white">{children}</main>
             <Footer />
           </AppProvider>
         </ThemeProvider>

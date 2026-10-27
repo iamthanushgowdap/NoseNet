@@ -32,21 +32,21 @@ export function ConfirmDialog({
     <Modal isOpen={isOpen} onClose={onClose} maxWidth="md">
       <div className="flex items-start gap-4 mb-5">
         <div
-          className={`p-2.5 rounded-xl shrink-0 ${
+          className={`p-2.5 rounded-lg shrink-0 ${
             variant === 'danger'
-              ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-              : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
+              ? 'bg-rose-950 text-white border border-rose-600'
+              : 'bg-neutral-900 text-white border border-neutral-700'
           }`}
         >
-          <AlertTriangle className="w-5 h-5" />
+          <AlertTriangle className="w-5 h-5 text-white" />
         </div>
         <div>
-          <h4 className="text-base font-semibold text-slate-100">{title}</h4>
-          <p className="text-sm text-slate-400 mt-1.5 leading-relaxed">{description}</p>
+          <h4 className="text-base font-bold text-white">{title}</h4>
+          <p className="text-xs text-neutral-300 mt-1.5 leading-relaxed">{description}</p>
         </div>
       </div>
 
-      <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+      <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-800">
         <Button variant="ghost" size="sm" onClick={onClose} disabled={isLoading}>
           {cancelLabel}
         </Button>

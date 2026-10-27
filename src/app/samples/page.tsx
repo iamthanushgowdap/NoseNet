@@ -105,15 +105,15 @@ function SamplesContent() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full bg-black text-white">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-slate-800 mb-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-neutral-800 mb-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-100 flex items-center gap-2.5">
-            <Layers className="w-6 h-6 text-cyan-400" />
+          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
+            <Layers className="w-6 h-6 text-white" />
             <span>Cake Sample Management</span>
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-neutral-400 mt-1">
             Registered specimens across Normal Cake & Pastry Cake, Frozen & Unfrozen storage conditions.
           </p>
         </div>
@@ -134,13 +134,13 @@ function SamplesContent() {
       {/* Filter and Search Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
         <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search samples..."
-            className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+            className="w-full pl-9 pr-3.5 py-2 rounded-lg bg-black border border-neutral-800 text-xs text-white placeholder:text-neutral-500 focus:outline-none focus:border-white"
           />
         </div>
 
@@ -148,11 +148,11 @@ function SamplesContent() {
           <select
             value={expFilter}
             onChange={(e) => setExpFilter(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+            className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-800 text-xs text-white focus:outline-none focus:border-white"
           >
-            <option value="ALL">All Experiments</option>
+            <option value="ALL" className="bg-black text-white">All Experiments</option>
             {experiments.map((e) => (
-              <option key={e.id} value={e.id}>
+              <option key={e.id} value={e.id} className="bg-black text-white">
                 {e.id} ({e.name.substring(0, 20)}...)
               </option>
             ))}
@@ -163,11 +163,11 @@ function SamplesContent() {
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+            className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-800 text-xs text-white focus:outline-none focus:border-white"
           >
-            <option value="ALL">All Categories</option>
-            <option value="Normal Cake">Normal Cake</option>
-            <option value="Pastry Cake">Pastry Cake</option>
+            <option value="ALL" className="bg-black text-white">All Categories</option>
+            <option value="Normal Cake" className="bg-black text-white">Normal Cake</option>
+            <option value="Pastry Cake" className="bg-black text-white">Pastry Cake</option>
           </select>
         </div>
 
@@ -175,11 +175,11 @@ function SamplesContent() {
           <select
             value={storageFilter}
             onChange={(e) => setStorageFilter(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+            className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-800 text-xs text-white focus:outline-none focus:border-white"
           >
-            <option value="ALL">All Storage Conditions</option>
-            <option value="Unfrozen">Unfrozen (Ambient)</option>
-            <option value="Frozen">Frozen (-18°C)</option>
+            <option value="ALL" className="bg-black text-white">All Storage Conditions</option>
+            <option value="Unfrozen" className="bg-black text-white">Unfrozen (Ambient)</option>
+            <option value="Frozen" className="bg-black text-white">Frozen (-18°C)</option>
           </select>
         </div>
 
@@ -187,13 +187,13 @@ function SamplesContent() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+            className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-800 text-xs text-white focus:outline-none focus:border-white"
           >
-            <option value="ALL">All Test Statuses</option>
-            <option value="Planned">Planned</option>
-            <option value="Testing">Testing</option>
-            <option value="Completed">Completed</option>
-            <option value="Invalid">Invalid</option>
+            <option value="ALL" className="bg-black text-white">All Test Statuses</option>
+            <option value="Planned" className="bg-black text-white">Planned</option>
+            <option value="Testing" className="bg-black text-white">Testing</option>
+            <option value="Completed" className="bg-black text-white">Completed</option>
+            <option value="Invalid" className="bg-black text-white">Invalid</option>
           </select>
         </div>
       </div>
@@ -222,10 +222,10 @@ function SamplesContent() {
           }}
         />
       ) : (
-        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+        <div className="bg-black border border-neutral-800 rounded-lg overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="text-[11px] uppercase tracking-wider text-slate-400 bg-slate-950/80 border-b border-slate-800">
+              <thead className="text-[11px] uppercase tracking-wider text-neutral-300 bg-neutral-950 border-b border-neutral-800 font-bold">
                 <tr>
                   <th className="py-3 px-4">Sample ID</th>
                   <th className="py-3 px-4">Experiment</th>
@@ -237,41 +237,41 @@ function SamplesContent() {
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/70">
+              <tbody className="divide-y divide-neutral-800">
                 {filteredSamples.map((s) => (
-                  <tr key={s.id} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="py-3 px-4 font-mono font-bold text-cyan-400">
+                  <tr key={s.id} className="hover:bg-neutral-900/60 transition-colors">
+                    <td className="py-3 px-4 font-mono font-bold text-white">
                       {s.id}
                     </td>
 
-                    <td className="py-3 px-4 font-mono text-slate-300">
+                    <td className="py-3 px-4 font-mono text-neutral-300">
                       <Link
                         href={`/experiments/${s.experimentId}`}
-                        className="hover:text-cyan-300 underline underline-offset-2"
+                        className="hover:text-white underline underline-offset-2"
                       >
                         {s.experimentId}
                       </Link>
                     </td>
 
                     <td className="py-3 px-4">
-                      <div className="font-medium text-slate-200">{s.category}</div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">
+                      <div className="font-medium text-white">{s.category}</div>
+                      <div className="text-[11px] text-neutral-300 mt-0.5">
                         <span
                           className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${
-                            s.storageCondition === 'Frozen' ? 'bg-cyan-400' : 'bg-amber-400'
+                            s.storageCondition === 'Frozen' ? 'bg-white' : 'bg-neutral-400'
                           }`}
                         />
                         {s.storageCondition}
                       </div>
                     </td>
 
-                    <td className="py-3 px-4 text-slate-300 font-medium">{s.replicateNumber}</td>
+                    <td className="py-3 px-4 text-white font-medium">{s.replicateNumber}</td>
 
-                    <td className="py-3 px-4 text-slate-400 font-mono">
+                    <td className="py-3 px-4 text-neutral-300 font-mono">
                       {formatDate(s.testDateTime)}
                     </td>
 
-                    <td className="py-3 px-4 text-slate-300">
+                    <td className="py-3 px-4 text-neutral-200">
                       {s.massGrams ? `${s.massGrams} g` : '—'}
                     </td>
 
@@ -284,12 +284,12 @@ function SamplesContent() {
                           onChange={(e) =>
                             handleQuickStatusChange(s.id, e.target.value as SampleTestStatus)
                           }
-                          className="text-[11px] py-0.5 px-1.5 rounded bg-slate-950 border border-slate-700 text-slate-300 focus:outline-none focus:border-cyan-500"
+                          className="text-[11px] py-0.5 px-1.5 rounded bg-black border border-neutral-700 text-white focus:outline-none focus:border-white"
                         >
-                          <option value="Planned">Planned</option>
-                          <option value="Testing">Testing</option>
-                          <option value="Completed">Completed</option>
-                          <option value="Invalid">Invalid</option>
+                          <option value="Planned" className="bg-black text-white">Planned</option>
+                          <option value="Testing" className="bg-black text-white">Testing</option>
+                          <option value="Completed" className="bg-black text-white">Completed</option>
+                          <option value="Invalid" className="bg-black text-white">Invalid</option>
                         </select>
                       </div>
                     </td>
@@ -298,7 +298,7 @@ function SamplesContent() {
                       <div className="flex items-center justify-end gap-2">
                         <Link
                           href={`/assess?sampleId=${s.id}`}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-950/60 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-800/50 transition-colors text-xs"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-black hover:bg-neutral-900 text-white border border-neutral-700 transition-colors text-xs"
                           title="Open Sensory Assessment"
                         >
                           <ClipboardCheck className="w-3.5 h-3.5" />
@@ -307,7 +307,7 @@ function SamplesContent() {
 
                         <button
                           onClick={() => handleOpenEdit(s)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                          className="p-1.5 rounded text-neutral-400 hover:text-white hover:bg-neutral-900 transition-colors"
                           title="Edit Sample"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -315,7 +315,7 @@ function SamplesContent() {
 
                         <button
                           onClick={() => setConfirmDeleteId(s.id)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                          className="p-1.5 rounded text-neutral-400 hover:text-white hover:bg-neutral-900 transition-colors"
                           title="Delete Sample"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -357,7 +357,7 @@ function SamplesContent() {
 
 export default function SamplesPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-slate-400">Loading samples...</div>}>
+    <Suspense fallback={<div className="p-8 text-center text-neutral-400">Loading samples...</div>}>
       <SamplesContent />
     </Suspense>
   );

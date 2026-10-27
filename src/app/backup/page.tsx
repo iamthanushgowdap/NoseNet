@@ -144,15 +144,15 @@ export default function BackupPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-8">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-8 bg-black text-white">
       {/* Header */}
-      <div className="pb-6 border-b border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="pb-6 border-b border-neutral-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-100 flex items-center gap-2.5">
-            <Database className="w-6 h-6 text-cyan-400" />
+          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
+            <Database className="w-6 h-6 text-white" />
             <span>Data Export, Backup & Restoration</span>
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-neutral-400 mt-1">
             Local browser storage management, validated JSON snapshots, and research CSV data exports.
           </p>
         </div>
@@ -162,34 +162,34 @@ export default function BackupPage() {
           size="sm"
           onClick={handleSeedDataset}
           isLoading={isResetting}
-          className="text-cyan-300 border-cyan-800/60 hover:bg-cyan-950/40"
+          className="text-white border-neutral-700 hover:bg-neutral-900"
         >
-          <Sparkles className="w-3.5 h-3.5 mr-1 text-cyan-400" />
+          <Sparkles className="w-3.5 h-3.5 mr-1 text-white" />
           <span>Load College Dataset</span>
         </Button>
       </div>
 
       {/* Currently Stored Data Summary */}
-      <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800">
-        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+      <div className="p-5 rounded-lg bg-black border border-neutral-800">
+        <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-3">
           Currently Persisted in Browser LocalStorage
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-            <span className="text-slate-500 block text-[11px]">Experiments</span>
-            <span className="text-base font-bold text-slate-100">{experiments.length}</span>
+          <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800">
+            <span className="text-neutral-400 block text-[11px]">Experiments</span>
+            <span className="text-base font-bold text-white">{experiments.length}</span>
           </div>
-          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-            <span className="text-slate-500 block text-[11px]">Samples</span>
-            <span className="text-base font-bold text-slate-100">{samples.length}</span>
+          <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800">
+            <span className="text-neutral-400 block text-[11px]">Samples</span>
+            <span className="text-base font-bold text-white">{samples.length}</span>
           </div>
-          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-            <span className="text-slate-500 block text-[11px]">Sensor Data Points</span>
-            <span className="text-base font-bold text-cyan-400">{sensorReadingsCount.toLocaleString()}</span>
+          <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800">
+            <span className="text-neutral-400 block text-[11px]">Sensor Data Points</span>
+            <span className="text-base font-bold text-white">{sensorReadingsCount.toLocaleString()}</span>
           </div>
-          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-            <span className="text-slate-500 block text-[11px]">Manual Sensory Logs</span>
-            <span className="text-base font-bold text-emerald-400">{assessmentsCount}</span>
+          <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800">
+            <span className="text-neutral-400 block text-[11px]">Manual Sensory Logs</span>
+            <span className="text-base font-bold text-white">{assessmentsCount}</span>
           </div>
         </div>
       </div>
@@ -197,21 +197,21 @@ export default function BackupPage() {
       {/* Export Section */}
       <div className="space-y-4">
         <div>
-          <h3 className="text-sm font-semibold text-slate-100">1. Research Data Exports</h3>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <h3 className="text-sm font-bold text-white">1. Research Data Exports</h3>
+          <p className="text-xs text-neutral-400 mt-0.5">
             Download individual CSV tables for analysis in Python (Pandas/SciPy), R, or Excel.
           </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {/* Sensor readings CSV */}
-          <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col justify-between">
+          <div className="p-4 rounded-lg bg-black border border-neutral-800 flex flex-col justify-between">
             <div>
-              <div className="flex items-center gap-2 mb-2 text-cyan-400">
-                <FileSpreadsheet className="w-4 h-4" />
-                <h4 className="text-xs font-bold text-slate-200">Sensor Readings CSV</h4>
+              <div className="flex items-center gap-2 mb-2 text-white">
+                <FileSpreadsheet className="w-4 h-4 text-white" />
+                <h4 className="text-xs font-bold text-white">Sensor Readings CSV</h4>
               </div>
-              <p className="text-[11px] text-slate-400 leading-snug">
+              <p className="text-[11px] text-neutral-400 leading-snug">
                 Complete ESP32 time-series: elapsed_seconds, temp, humidity, pressure, gas resistance.
               </p>
             </div>
@@ -228,13 +228,13 @@ export default function BackupPage() {
           </div>
 
           {/* Manual Assessments CSV */}
-          <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col justify-between">
+          <div className="p-4 rounded-lg bg-black border border-neutral-800 flex flex-col justify-between">
             <div>
-              <div className="flex items-center gap-2 mb-2 text-emerald-400">
-                <FileSpreadsheet className="w-4 h-4" />
-                <h4 className="text-xs font-bold text-slate-200">Manual Assessments CSV</h4>
+              <div className="flex items-center gap-2 mb-2 text-white">
+                <FileSpreadsheet className="w-4 h-4 text-white" />
+                <h4 className="text-xs font-bold text-white">Manual Assessments CSV</h4>
               </div>
-              <p className="text-[11px] text-slate-400 leading-snug">
+              <p className="text-[11px] text-neutral-400 leading-snug">
                 Fresh/Average/Not Good sensory labels with assessor IDs, confidence, and timestamps.
               </p>
             </div>
@@ -251,13 +251,13 @@ export default function BackupPage() {
           </div>
 
           {/* Sample Metadata CSV */}
-          <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col justify-between">
+          <div className="p-4 rounded-lg bg-black border border-neutral-800 flex flex-col justify-between">
             <div>
-              <div className="flex items-center gap-2 mb-2 text-blue-400">
-                <FileSpreadsheet className="w-4 h-4" />
-                <h4 className="text-xs font-bold text-slate-200">Sample Metadata CSV</h4>
+              <div className="flex items-center gap-2 mb-2 text-white">
+                <FileSpreadsheet className="w-4 h-4 text-white" />
+                <h4 className="text-xs font-bold text-white">Sample Metadata CSV</h4>
               </div>
-              <p className="text-[11px] text-slate-400 leading-snug">
+              <p className="text-[11px] text-neutral-400 leading-snug">
                 Cake categories (Normal vs Pastry), storage (Frozen vs Unfrozen), replicates, mass.
               </p>
             </div>
@@ -274,13 +274,13 @@ export default function BackupPage() {
           </div>
 
           {/* Experiment Summary CSV */}
-          <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col justify-between">
+          <div className="p-4 rounded-lg bg-black border border-neutral-800 flex flex-col justify-between">
             <div>
-              <div className="flex items-center gap-2 mb-2 text-purple-400">
-                <FileSpreadsheet className="w-4 h-4" />
-                <h4 className="text-xs font-bold text-slate-200">Experiment Summary CSV</h4>
+              <div className="flex items-center gap-2 mb-2 text-white">
+                <FileSpreadsheet className="w-4 h-4 text-white" />
+                <h4 className="text-xs font-bold text-white">Experiment Summary CSV</h4>
               </div>
-              <p className="text-[11px] text-slate-400 leading-snug">
+              <p className="text-[11px] text-neutral-400 leading-snug">
                 Protocols, test dates, planned duration, ROOM & EMPTY_CONTAINER control baselines.
               </p>
             </div>
@@ -297,15 +297,15 @@ export default function BackupPage() {
           </div>
 
           {/* Complete JSON Backup */}
-          <div className="p-4 rounded-xl bg-slate-900 border border-cyan-500/30 flex flex-col justify-between sm:col-span-2">
+          <div className="p-4 rounded-lg bg-black border border-neutral-700 flex flex-col justify-between sm:col-span-2">
             <div>
-              <div className="flex items-center gap-2 mb-2 text-cyan-300">
-                <FileJson className="w-4 h-4" />
-                <h4 className="text-xs font-bold text-slate-100">
+              <div className="flex items-center gap-2 mb-2 text-white">
+                <FileJson className="w-4 h-4 text-white" />
+                <h4 className="text-xs font-bold text-white">
                   Full Project JSON Backup Snapshot
                 </h4>
               </div>
-              <p className="text-[11px] text-slate-400 leading-snug">
+              <p className="text-[11px] text-neutral-400 leading-snug">
                 Packages the entire database into a single validated JSON file with schema metadata.
                 Can be restored on any computer or browser running NoseNet.
               </p>
@@ -324,15 +324,15 @@ export default function BackupPage() {
       </div>
 
       {/* Restore Section */}
-      <div className="space-y-4 pt-4 border-t border-slate-800">
+      <div className="space-y-4 pt-4 border-t border-neutral-800">
         <div>
-          <h3 className="text-sm font-semibold text-slate-100">2. Restore from JSON Backup</h3>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <h3 className="text-sm font-bold text-white">2. Restore from JSON Backup</h3>
+          <p className="text-xs text-neutral-400 mt-0.5">
             Upload a previously exported NoseNet JSON file. Zod schema validation runs before any changes are made.
           </p>
         </div>
 
-        <div className="p-6 rounded-2xl bg-slate-900/50 border border-dashed border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="p-6 rounded-lg bg-black border border-dashed border-neutral-800 flex flex-col sm:flex-row items-center justify-between gap-4">
           <input
             ref={fileInputRef}
             type="file"
@@ -341,14 +341,14 @@ export default function BackupPage() {
             onChange={handleFileUpload}
           />
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 text-cyan-400 flex items-center justify-center shrink-0">
-              <Upload className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-lg bg-neutral-900 border border-neutral-700 text-white flex items-center justify-center shrink-0">
+              <Upload className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h4 className="text-xs font-semibold text-slate-200">
+              <h4 className="text-xs font-bold text-white">
                 Select Backup File (.json)
               </h4>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-neutral-400">
                 Data will be previewed with a confirmation prompt before replacement.
               </p>
             </div>
@@ -366,12 +366,12 @@ export default function BackupPage() {
       </div>
 
       {/* Danger Zone: Clear Local Storage */}
-      <div className="p-5 rounded-2xl bg-rose-950/20 border border-rose-900/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="p-5 rounded-lg bg-neutral-950 border border-neutral-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h4 className="text-xs font-bold text-rose-300 uppercase tracking-wider">
+          <h4 className="text-xs font-bold text-white uppercase tracking-wider">
             Reset Development Storage
           </h4>
-          <p className="text-[11px] text-slate-400 mt-0.5">
+          <p className="text-[11px] text-neutral-400 mt-0.5">
             Wipe all local experiments, samples, readings, and assessments from this browser.
           </p>
         </div>
@@ -395,12 +395,12 @@ export default function BackupPage() {
       >
         {validationErrors.length > 0 ? (
           <div className="space-y-3">
-            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
-              <div className="font-semibold mb-1 flex items-center gap-1.5 text-rose-400">
-                <AlertTriangle className="w-4 h-4" />
+            <div className="p-3.5 rounded-lg bg-neutral-900 border border-neutral-700 text-white text-xs">
+              <div className="font-semibold mb-1 flex items-center gap-1.5 text-white">
+                <AlertTriangle className="w-4 h-4 text-white" />
                 <span>Backup Schema Validation Failed</span>
               </div>
-              <ul className="list-disc list-inside space-y-0.5 font-mono text-[11px]">
+              <ul className="list-disc list-inside space-y-0.5 font-mono text-[11px] text-neutral-300">
                 {validationErrors.map((err, i) => (
                   <li key={i}>{err}</li>
                 ))}
@@ -415,67 +415,67 @@ export default function BackupPage() {
         ) : validatedBackup ? (
           <div className="space-y-4">
             {statusMessage && (
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <div className="p-3 rounded-lg bg-neutral-900 border border-neutral-700 text-white text-xs flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-white" />
                 <span>{statusMessage}</span>
               </div>
             )}
 
-            <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-2">
+            <div className="p-3.5 rounded-lg bg-neutral-950 border border-neutral-800 text-xs space-y-2">
               <div className="flex justify-between">
-                <span className="text-slate-400">Application:</span>
-                <span className="font-semibold text-slate-200">{validatedBackup.application}</span>
+                <span className="text-neutral-400">Application:</span>
+                <span className="font-semibold text-white">{validatedBackup.application}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Backup Version:</span>
-                <span className="font-mono text-cyan-300">{validatedBackup.version}</span>
+                <span className="text-neutral-400">Backup Version:</span>
+                <span className="font-mono text-white font-bold">{validatedBackup.version}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Export Timestamp:</span>
-                <span className="font-mono text-slate-300">{formatDate(validatedBackup.exportedAt)}</span>
+                <span className="text-neutral-400">Export Timestamp:</span>
+                <span className="font-mono text-neutral-300">{formatDate(validatedBackup.exportedAt)}</span>
               </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-center">
-              <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
-                <span className="text-slate-500 text-[10px] block">Experiments</span>
-                <span className="font-bold text-slate-200">{validatedBackup.experiments.length}</span>
+              <div className="p-2.5 rounded-lg bg-neutral-950 border border-neutral-800">
+                <span className="text-neutral-400 text-[10px] block">Experiments</span>
+                <span className="font-bold text-white">{validatedBackup.experiments.length}</span>
               </div>
-              <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
-                <span className="text-slate-500 text-[10px] block">Samples</span>
-                <span className="font-bold text-slate-200">{validatedBackup.samples.length}</span>
+              <div className="p-2.5 rounded-lg bg-neutral-950 border border-neutral-800">
+                <span className="text-neutral-400 text-[10px] block">Samples</span>
+                <span className="font-bold text-white">{validatedBackup.samples.length}</span>
               </div>
-              <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
-                <span className="text-slate-500 text-[10px] block">Readings</span>
-                <span className="font-bold text-cyan-400">{validatedBackup.sensorReadings.length}</span>
+              <div className="p-2.5 rounded-lg bg-neutral-950 border border-neutral-800">
+                <span className="text-neutral-400 text-[10px] block">Readings</span>
+                <span className="font-bold text-white">{validatedBackup.sensorReadings.length}</span>
               </div>
-              <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
-                <span className="text-slate-500 text-[10px] block">Assessments</span>
-                <span className="font-bold text-emerald-400">{validatedBackup.manualAssessments.length}</span>
+              <div className="p-2.5 rounded-lg bg-neutral-950 border border-neutral-800">
+                <span className="text-neutral-400 text-[10px] block">Assessments</span>
+                <span className="font-bold text-white">{validatedBackup.manualAssessments.length}</span>
               </div>
             </div>
 
             {/* Replacement mode options */}
-            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+            <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800 space-y-2">
               <label className="flex items-center gap-2 cursor-pointer text-xs select-none">
                 <input
                   type="checkbox"
                   checked={replaceExisting}
                   onChange={(e) => setReplaceExisting(e.target.checked)}
-                  className="rounded border-slate-700 text-rose-500 focus:ring-rose-500"
+                  className="rounded border-neutral-700 bg-black text-white focus:ring-white"
                 />
-                <span className="font-medium text-slate-200">
+                <span className="font-medium text-white">
                   Replace all existing data (uncheck to merge instead)
                 </span>
               </label>
-              <p className="text-[11px] text-slate-500 pl-6">
+              <p className="text-[11px] text-neutral-400 pl-6">
                 {replaceExisting
                   ? 'Warning: Existing records in this browser will be wiped and replaced with the backup file.'
                   : 'Safe mode: Records with new IDs will be added, keeping existing data intact.'}
               </p>
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-800">
               <Button
                 variant="ghost"
                 size="sm"

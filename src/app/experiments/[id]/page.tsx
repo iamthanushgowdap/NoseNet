@@ -61,7 +61,7 @@ function ExperimentDetailContent({ id }: { id: string }) {
 
   if (isLoading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-16 text-center text-slate-400">
+      <div className="max-w-7xl mx-auto px-4 py-16 text-center text-white">
         Loading experiment details...
       </div>
     );
@@ -69,9 +69,9 @@ function ExperimentDetailContent({ id }: { id: string }) {
 
   if (!experiment) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-16 text-center">
-        <h2 className="text-lg font-semibold text-slate-200">Experiment Not Found</h2>
-        <p className="text-xs text-slate-400 mt-1 mb-4">
+      <div className="max-w-7xl mx-auto px-4 py-16 text-center text-white">
+        <h2 className="text-lg font-bold text-white">Experiment Not Found</h2>
+        <p className="text-xs text-neutral-300 mt-1 mb-4">
           No experiment exists with ID &quot;{id}&quot;.
         </p>
         <Link href="/experiments">
@@ -84,32 +84,32 @@ function ExperimentDetailContent({ id }: { id: string }) {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full bg-black text-white space-y-6">
       {/* Back button */}
-      <div className="mb-4">
+      <div>
         <Link
           href="/experiments"
-          className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+          className="inline-flex items-center gap-1.5 text-xs text-neutral-300 hover:text-white transition-colors font-medium"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>Back to All Experiments</span>
         </Link>
       </div>
 
-      {/* Main Header */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-6">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+      {/* Main Header Card */}
+      <div className="bg-black border border-neutral-800 rounded-xl p-6 text-white space-y-5">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-neutral-800">
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="font-mono text-sm font-bold text-cyan-400">
+              <span className="font-mono text-sm font-bold text-white">
                 {experiment.id}
               </span>
               <StatusBadge status={experiment.status} />
-              <span className="text-xs text-slate-500 font-mono">
+              <span className="text-xs text-neutral-400 font-mono">
                 Created {formatDate(experiment.createdAt)}
               </span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-100 mt-2">
+            <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white mt-2">
               {experiment.name}
             </h1>
           </div>
@@ -117,7 +117,7 @@ function ExperimentDetailContent({ id }: { id: string }) {
           <div className="flex flex-wrap items-center gap-2">
             <Link href={`/sensor?experimentId=${experiment.id}`}>
               <Button variant="outline" size="sm">
-                <LineChart className="w-3.5 h-3.5 mr-1 text-cyan-400" />
+                <LineChart className="w-3.5 h-3.5 mr-1 text-white" />
                 View Sensor Graphs
               </Button>
             </Link>
@@ -128,58 +128,58 @@ function ExperimentDetailContent({ id }: { id: string }) {
           </div>
         </div>
 
-        {/* Metadata info grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 text-xs">
-          <div>
-            <span className="text-slate-500 flex items-center gap-1">
-              <Calendar className="w-3 h-3" /> Test Date
+        {/* Metadata grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-1 text-xs">
+          <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800">
+            <span className="text-neutral-400 flex items-center gap-1 text-[11px] uppercase font-bold">
+              <Calendar className="w-3 h-3 text-white" /> Test Date
             </span>
-            <span className="font-medium text-slate-200 mt-0.5 block">
+            <span className="font-bold text-white mt-1 block text-sm">
               {experiment.testDate}
             </span>
           </div>
-          <div>
-            <span className="text-slate-500 flex items-center gap-1">
-              <Clock className="w-3 h-3" /> Planned Duration
+          <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800">
+            <span className="text-neutral-400 flex items-center gap-1 text-[11px] uppercase font-bold">
+              <Clock className="w-3 h-3 text-white" /> Planned Duration
             </span>
-            <span className="font-medium text-slate-200 mt-0.5 block">
-              {experiment.plannedDurationMinutes} minutes
+            <span className="font-bold text-white mt-1 block text-sm">
+              {experiment.plannedDurationMinutes} mins
             </span>
           </div>
-          <div>
-            <span className="text-slate-500 flex items-center gap-1">
-              <Clock className="w-3 h-3" /> Actual Duration
+          <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800">
+            <span className="text-neutral-400 flex items-center gap-1 text-[11px] uppercase font-bold">
+              <Clock className="w-3 h-3 text-white" /> Actual Duration
             </span>
-            <span className="font-medium text-slate-200 mt-0.5 block">
+            <span className="font-bold text-white mt-1 block text-sm">
               {experiment.actualDurationMinutes ? `${experiment.actualDurationMinutes} mins` : '—'}
             </span>
           </div>
-          <div>
-            <span className="text-slate-500 flex items-center gap-1">
-              <Layers className="w-3 h-3" /> Total Samples
+          <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800">
+            <span className="text-neutral-400 flex items-center gap-1 text-[11px] uppercase font-bold">
+              <Layers className="w-3 h-3 text-white" /> Total Samples
             </span>
-            <span className="font-medium text-slate-200 mt-0.5 block">
+            <span className="font-bold text-white mt-1 block text-sm">
               {samples.length} registered
             </span>
           </div>
         </div>
 
         {experiment.description && (
-          <div className="mt-4 pt-4 border-t border-slate-800/80">
-            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
+          <div className="pt-2">
+            <h4 className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">
               Description & Objectives
             </h4>
-            <p className="text-xs text-slate-300 leading-relaxed">{experiment.description}</p>
+            <p className="text-xs text-white leading-relaxed">{experiment.description}</p>
           </div>
         )}
 
         {experiment.protocolNotes && (
-          <div className="mt-4 pt-4 border-t border-slate-800/80">
-            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-cyan-400" />
+          <div className="pt-2">
+            <h4 className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5 text-white" />
               <span>Protocol Notes & Sensor Settings</span>
             </h4>
-            <p className="text-xs font-mono text-slate-300 bg-slate-950 p-3 rounded-xl border border-slate-800/80 leading-relaxed whitespace-pre-wrap">
+            <p className="text-xs font-mono text-white bg-neutral-950 p-3 rounded-lg border border-neutral-800 leading-relaxed whitespace-pre-wrap">
               {experiment.protocolNotes}
             </p>
           </div>
@@ -187,14 +187,14 @@ function ExperimentDetailContent({ id }: { id: string }) {
       </div>
 
       {/* Control Runs Baseline Verification Card */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-6">
-        <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
+      <div className="bg-black border border-neutral-800 rounded-xl p-6 text-white space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
           <div>
-            <h3 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-cyan-400" />
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-white" />
               <span>Control Runs & Reference Baselines</span>
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-neutral-300 mt-0.5">
               Pre-test baselines required for temperature/humidity compensation and drift calibration.
             </p>
           </div>
@@ -202,52 +202,52 @@ function ExperimentDetailContent({ id }: { id: string }) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* ROOM Stage Card */}
-          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
+          <div className="p-4 rounded-lg bg-neutral-950 border border-neutral-800">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
+              <span className="text-xs font-bold uppercase tracking-wider text-white">
                 1. ROOM Control Run
               </span>
               <span
-                className={`text-[11px] font-semibold px-2 py-0.5 rounded ${
+                className={`text-[11px] font-bold px-2 py-0.5 rounded ${
                   experiment.controls.roomStageCompleted
-                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                    : 'bg-slate-800 text-slate-400'
+                    ? 'bg-neutral-900 text-white border border-white'
+                    : 'bg-neutral-900 text-neutral-400 border border-neutral-700'
                 }`}
               >
                 {experiment.controls.roomStageCompleted ? 'Verified' : 'Pending'}
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">
+            <p className="text-[11px] text-neutral-300 mt-1">
               Measures ambient air before placing cake inside chamber.
             </p>
             {experiment.controls.roomBaselineResistanceKohm && (
-              <div className="mt-3 text-xs font-mono text-cyan-400">
+              <div className="mt-3 text-xs font-mono text-white font-bold">
                 Baseline Gas Resistance: {experiment.controls.roomBaselineResistanceKohm} kΩ
               </div>
             )}
           </div>
 
           {/* EMPTY_CONTAINER Stage Card */}
-          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
+          <div className="p-4 rounded-lg bg-neutral-950 border border-neutral-800">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
+              <span className="text-xs font-bold uppercase tracking-wider text-white">
                 2. EMPTY_CONTAINER Control Run
               </span>
               <span
-                className={`text-[11px] font-semibold px-2 py-0.5 rounded ${
+                className={`text-[11px] font-bold px-2 py-0.5 rounded ${
                   experiment.controls.emptyContainerStageCompleted
-                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                    : 'bg-slate-800 text-slate-400'
+                    ? 'bg-neutral-900 text-white border border-white'
+                    : 'bg-neutral-900 text-neutral-400 border border-neutral-700'
                 }`}
               >
                 {experiment.controls.emptyContainerStageCompleted ? 'Verified' : 'Pending'}
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">
-              Ensures zero volatile contamination or residual alcohol inside testing chamber.
+            <p className="text-[11px] text-neutral-300 mt-1">
+              Ensures zero volatile contamination inside testing chamber.
             </p>
             {experiment.controls.emptyContainerBaselineResistanceKohm && (
-              <div className="mt-3 text-xs font-mono text-cyan-400">
+              <div className="mt-3 text-xs font-mono text-white font-bold">
                 Baseline Gas Resistance: {experiment.controls.emptyContainerBaselineResistanceKohm} kΩ
               </div>
             )}
@@ -255,76 +255,66 @@ function ExperimentDetailContent({ id }: { id: string }) {
         </div>
 
         {experiment.controls.notes && (
-          <div className="mt-4 text-xs text-slate-400 bg-slate-950/60 p-3 rounded-xl border border-slate-800/60">
-            <strong>Control Run Notes:</strong> {experiment.controls.notes}
+          <div className="mt-4 text-xs text-neutral-300 bg-neutral-950 p-3 rounded-lg border border-neutral-800">
+            <strong className="text-white">Control Run Notes:</strong> {experiment.controls.notes}
           </div>
         )}
       </div>
 
       {/* Associated Samples Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-        <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
+      <div className="bg-black border border-neutral-800 rounded-xl p-6 text-white space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
           <div className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-cyan-400" />
-            <h3 className="text-sm font-semibold text-slate-100">
+            <Layers className="w-4 h-4 text-white" />
+            <h3 className="text-sm font-bold text-white">
               Registered Samples ({samples.length})
             </h3>
           </div>
           <Link href={`/samples?experimentId=${experiment.id}`}>
             <Button variant="primary" size="sm">
-              <Plus className="w-3.5 h-3.5 mr-1" />
+              <Plus className="w-3.5 h-3.5 mr-1 text-black" />
               Register Sample for this Experiment
             </Button>
           </Link>
         </div>
 
         {samples.length === 0 ? (
-          <div className="py-8 text-center text-xs text-slate-400">
+          <div className="py-8 text-center text-xs text-neutral-400">
             No cake samples registered for this experiment yet.
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto border border-neutral-800 rounded-lg">
             <table className="w-full text-left text-xs">
-              <thead className="text-[11px] uppercase tracking-wider text-slate-400 bg-slate-950/80 border-b border-slate-800">
+              <thead className="text-[11px] uppercase tracking-wider text-white bg-neutral-900 border-b border-neutral-800">
                 <tr>
-                  <th className="py-2.5 px-3">Sample ID</th>
-                  <th className="py-2.5 px-3">Cake Category</th>
-                  <th className="py-2.5 px-3">Storage Condition</th>
-                  <th className="py-2.5 px-3">Replicate</th>
-                  <th className="py-2.5 px-3">Test Status</th>
-                  <th className="py-2.5 px-3">Mass (g)</th>
-                  <th className="py-2.5 px-3 text-right">Actions</th>
+                  <th className="py-3 px-4">Sample ID</th>
+                  <th className="py-3 px-4">Cake Category</th>
+                  <th className="py-3 px-4">Storage Condition</th>
+                  <th className="py-3 px-4">Replicate</th>
+                  <th className="py-3 px-4">Test Status</th>
+                  <th className="py-3 px-4">Mass</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/80">
+              <tbody className="divide-y divide-neutral-800">
                 {samples.map((s) => (
-                  <tr key={s.id} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="py-2.5 px-3 font-mono font-medium text-cyan-400">{s.id}</td>
-                    <td className="py-2.5 px-3 text-slate-200">{s.category}</td>
-                    <td className="py-2.5 px-3">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[11px] ${
-                          s.storageCondition === 'Frozen'
-                            ? 'bg-cyan-500/10 text-cyan-300'
-                            : 'bg-amber-500/10 text-amber-300'
-                        }`}
-                      >
-                        {s.storageCondition}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-300">{s.replicateNumber}</td>
-                    <td className="py-2.5 px-3">
+                  <tr key={s.id} className="hover:bg-neutral-900 transition-colors">
+                    <td className="py-3 px-4 font-mono font-bold text-white">{s.id}</td>
+                    <td className="py-3 px-4 text-white font-medium">{s.category}</td>
+                    <td className="py-3 px-4 text-white">{s.storageCondition}</td>
+                    <td className="py-3 px-4 text-white">{s.replicateNumber}</td>
+                    <td className="py-3 px-4">
                       <StatusBadge status={s.status} />
                     </td>
-                    <td className="py-2.5 px-3 text-slate-300">
+                    <td className="py-3 px-4 text-white">
                       {s.massGrams ? `${s.massGrams} g` : '—'}
                     </td>
-                    <td className="py-2.5 px-3 text-right space-x-2">
+                    <td className="py-3 px-4 text-right">
                       <Link
                         href={`/assess?sampleId=${s.id}`}
-                        className="text-cyan-400 hover:text-cyan-300 font-medium"
+                        className="text-white hover:underline font-bold"
                       >
-                        Assess
+                        Assess →
                       </Link>
                     </td>
                   </tr>
@@ -357,7 +347,7 @@ export default function ExperimentDetailPage({
   params: Promise<{ id: string }>;
 }) {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-slate-400">Loading experiment...</div>}>
+    <Suspense fallback={<div className="p-8 text-center text-white">Loading experiment...</div>}>
       <ExperimentDetailInner params={params} />
     </Suspense>
   );
