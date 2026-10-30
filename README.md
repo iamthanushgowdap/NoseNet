@@ -143,11 +143,9 @@ npm test
 
 ---
 
-## 📄 Project Report & Datasets
+## 📄 Project Documentation & Academic Submission
 
-- **Full VTU Project Report**: [`NoseNet_Major_Project_Report.docx`](./NoseNet_Major_Project_Report.docx) *(58 pages, 14 figures, 9 tables)*
-- **Report Markdown Version**: [`NoseNet_Major_Project_Report.md`](./NoseNet_Major_Project_Report.md)
-- **7-Day Master Sensor Dataset**: [`src/data/NoseNet-7Day-Complete-Experimental-Readings.csv`](./src/data/NoseNet-7Day-Complete-Experimental-Readings.csv)
+The complete 58-page formal thesis report, structural schematics, and empirical 52-record experimental calibration ledgers are prepared strictly in accordance with Visvesvaraya Technological University (VTU) Eighth Semester Bachelor of Engineering guidelines. Formal hardbound copies and digital thesis archives are submitted directly to the Department of Information Science & Engineering, A.P.S. College of Engineering.
 
 ---
 

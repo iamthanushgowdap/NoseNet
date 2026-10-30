@@ -43,3 +43,11 @@ next-env.d.ts
 # temporary profiles & chrome caches
 chrome_profile/
 *.log
+
+# Revoked Reports, Theses, and Proprietary College Datasets
+NoseNet_Major_Project_Report.docx
+NoseNet_Major_Project_Report.md
+src/data/NoseNet_Major_Project_Report.*
+src/data/NoseNet-7Day-Complete-Experimental-Readings.*
+src/components/example/*.pdf
+src/components/example/Readings-Major_Project.txt
