@@ -10,16 +10,13 @@
 > **Visvesvaraya Technological University (VTU), Belagavi**  
 > **Department of Information Science and Engineering**  
 > **A.P.S. College of Engineering, Bengaluru – 560116**  
-> *Academic Year: 2025 – 2026*
+> *Academic Year: 2026 – 2027*
 
 ---
 
-## 👥 Project Team & Mentorship
+## 👤 Project Author & Mentorship
 
-- **Dhanush Gowda H P** (`1AP23IS017`)
-- **T Mythri** (`1AP23IS054`)
-- **Tanushree K S** (`1AP23IS055`)
-- **Thanush Gowda P** (`1AP23IS056`)
+- **Thanush Gowda P** (1AP23IS056)
 
 - **Project Guide**: **Prof. Lohit J K**, Assistant Professor, Dept. of ISE, APSCE
 - **Coordinator & HOD**: **Dr. Mithun B N**, Professor & Head, Dept. of ISE, APSCE
@@ -140,12 +137,6 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 npm test
 ```
 *Current test suite: 31/31 unit tests passing (Vitest + React Testing Library).*
-
----
-
-## 📄 Project Documentation & Academic Submission
-
-The complete 58-page formal thesis report, structural schematics, and empirical 52-record experimental calibration ledgers are prepared strictly in accordance with Visvesvaraya Technological University (VTU) Eighth Semester Bachelor of Engineering guidelines. Formal hardbound copies and digital thesis archives are submitted directly to the Department of Information Science & Engineering, A.P.S. College of Engineering.
 
 ---
 
