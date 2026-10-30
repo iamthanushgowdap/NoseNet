@@ -51,7 +51,9 @@ export default function RootLayout({
             <Navbar />
           </Suspense>
           <main className="flex-1 flex flex-col bg-black text-white w-full">{children}</main>
-          <Footer />
+          <Suspense fallback={null}>
+            <Footer />
+          </Suspense>
         </AppProvider>
       </body>
     </html>
