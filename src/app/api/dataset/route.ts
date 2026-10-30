@@ -1,18 +1,9 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { LONGITUDINAL_CSV_STRING } from '@/lib/data/longitudinal-dataset';
 
 export async function GET(request: Request) {
   try {
-    const filePath = path.join(process.cwd(), 'src', 'data', 'NoseNet-7Day-Complete-Experimental-Readings.csv');
-    
-    if (!fs.existsSync(filePath)) {
-      return NextResponse.json({ error: 'Dataset file not found' }, { status: 404 });
-    }
-
-    const csvContent = fs.readFileSync(filePath, 'utf-8');
-
-    return new NextResponse(csvContent, {
+    return new NextResponse(LONGITUDINAL_CSV_STRING, {
       status: 200,
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',

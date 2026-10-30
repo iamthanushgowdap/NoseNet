@@ -17,7 +17,7 @@ import {
   Layers,
   Sparkles,
 } from 'lucide-react';
-import datasetData from '@/data/NoseNet-7Day-Complete-Experimental-Readings.json';
+import { LONGITUDINAL_DATASET as datasetData } from '@/lib/data/longitudinal-dataset';
 
 interface LongitudinalDatasetModalProps {
   isOpen: boolean;
