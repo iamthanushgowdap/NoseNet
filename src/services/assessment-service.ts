@@ -33,7 +33,7 @@ export class AssessmentService {
       assessorName: validated.assessorName,
       assessorId: validated.assessorId,
       label: validated.label,
-      confidenceRating: validated.confidenceRating,
+      confidenceRating: validated.confidenceRating ?? 4,
       notes: validated.notes || '',
       createdAt: new Date().toISOString(),
     };

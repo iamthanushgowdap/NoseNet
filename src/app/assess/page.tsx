@@ -1,493 +1,447 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
-import { useApp } from '@/context/app-context';
-import { services } from '@/services';
-import { FreshnessLabel, ManualAssessment, SampleAssessmentSummary } from '@/types/assessment';
-import { Button } from '@/components/common/button';
-import { StatusBadge } from '@/components/common/badge';
-import { ConfirmDialog } from '@/components/common/confirm-dialog';
-import { EmptyState } from '@/components/common/empty-state';
-import { formatDate } from '@/lib/utils';
+import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
+import QRCode from 'qrcode';
 import {
-  Smartphone,
-  AlertTriangle,
+  ClipboardCheck,
+  QrCode,
   CheckCircle2,
-  ThumbsUp,
-  MinusCircle,
-  ThumbsDown,
-  Info,
-  History,
-  Star,
-  Users,
-  Layers,
-  Download,
+  Clock,
+  ExternalLink,
+  Copy,
+  RefreshCw,
+  Smartphone,
+  ShieldCheck,
+  Eye,
+  Wind,
+  Award,
+  ChevronRight,
+  X,
+  PlayCircle,
+  Calendar,
 } from 'lucide-react';
+import { TestRun } from '@/types/test-run';
+import { idbStorage } from '@/lib/storage/indexed-db';
+import { formatDate } from '@/lib/utils';
 
-function AssessmentTerminal() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const urlSampleId = searchParams.get('sampleId');
+export default function AssessmentHubPage() {
+  const [tests, setTests] = useState<TestRun[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedTest, setSelectedTest] = useState<TestRun | null>(null);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
+  const [assessmentUrl, setAssessmentUrl] = useState<string>('');
+  const [isCopied, setIsCopied] = useState(false);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
 
-  const { samples, session, refreshData } = useApp();
-
-  const [selectedSampleId, setSelectedSampleId] = useState<string>(urlSampleId || '');
-  const [selectedLabel, setSelectedLabel] = useState<FreshnessLabel | null>(null);
-  const [confidence, setConfidence] = useState<number>(4);
-  const [notes, setNotes] = useState('');
-  const [assessorName, setAssessorName] = useState(session?.displayName || 'Assessor 1');
-
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  const [summary, setSummary] = useState<SampleAssessmentSummary | null>(null);
-  const [allAssessments, setAllAssessments] = useState<ManualAssessment[]>([]);
-
-  const effectiveSampleId = selectedSampleId || (samples.length > 0 ? samples[0].id : '');
-
-  const activeSample = useMemo(() => {
-    return samples.find((s) => s.id === effectiveSampleId) || null;
-  }, [samples, effectiveSampleId]);
-
-  const loadAssessments = async (sampleId: string) => {
-    if (!sampleId) return;
+  const loadTests = async () => {
+    setIsLoading(true);
     try {
-      const summ = await services.assessments.getSummaryForSample(sampleId);
-      setSummary(summ);
-      const all = await services.assessments.getAssessments();
-      setAllAssessments(all);
+      const data = await idbStorage.getAllTestRuns();
+      setTests(data);
+
+      // Default select the most recent test if available
+      if (data.length > 0 && !selectedTest) {
+        selectTestForQr(data[0]);
+      }
     } catch (e) {
-      console.error('Failed to load sample assessments:', e);
+      console.error('Failed to load tests for assessment hub:', e);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (effectiveSampleId) {
-      loadAssessments(effectiveSampleId);
-    }
-  }, [effectiveSampleId]);
+    loadTests();
+  }, []);
 
-  const handleOpenConfirm = (label: FreshnessLabel) => {
-    setSelectedLabel(label);
-    setIsConfirmOpen(true);
-  };
+  const selectTestForQr = async (test: TestRun) => {
+    setSelectedTest(test);
+    if (!test.assessmentToken) return;
 
-  const handleConfirmSubmit = async () => {
-    if (!activeSample || !selectedLabel) return;
-    setIsSubmitting(true);
-    setFeedbackMessage(null);
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const url = `${origin}/assess/${test.assessmentToken}`;
+    setAssessmentUrl(url);
 
     try {
-      await services.assessments.submitAssessment({
-        experimentId: activeSample.experimentId,
-        sampleId: activeSample.id,
-        assessorName: assessorName.trim() || 'Anonymous Assessor',
-        assessorId: session?.userId || 'usr_anon',
-        label: selectedLabel,
-        confidenceRating: confidence,
-        notes: notes.trim() || undefined,
+      const qr = await QRCode.toDataURL(url, {
+        width: 240,
+        margin: 1,
+        color: { dark: '#000000', light: '#ffffff' },
       });
-
-      // Clear local fields
-      setNotes('');
-      setIsConfirmOpen(false);
-      setFeedbackMessage({
-        type: 'success',
-        text: `Logged "${selectedLabel}" assessment for ${activeSample.id} successfully!`,
-      });
-
-      await refreshData();
-      await loadAssessments(activeSample.id);
-    } catch (err: unknown) {
-      setFeedbackMessage({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to submit assessment.',
-      });
-    } finally {
-      setIsSubmitting(false);
+      setQrCodeDataUrl(qr);
+    } catch (err) {
+      console.error('QR generation failed:', err);
     }
   };
 
-  const handleExportAllAssessments = async () => {
-    const list = await services.assessments.getAssessments();
-    const csv = services.assessments.exportToCsv(list);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `nosenet_manual_assessments_${Date.now()}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleCopy = () => {
+    if (assessmentUrl) {
+      navigator.clipboard.writeText(assessmentUrl);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    }
+  };
+
+  const checkTokenStatus = async () => {
+    if (!selectedTest?.assessmentToken) return;
+    setIsCheckingStatus(true);
+    try {
+      const res = await fetch(`/api/assessments/${selectedTest.assessmentToken}/status`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.submitted && data.assessment) {
+          const updatedTest: TestRun = {
+            ...selectedTest,
+            humanAssessment: data.assessment,
+            assessmentStatus: 'Submitted',
+          };
+          await idbStorage.saveTestRun(updatedTest);
+          setSelectedTest(updatedTest);
+          setTests((prev) => prev.map((t) => (t.id === updatedTest.id ? updatedTest : t)));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to check token status:', e);
+    } finally {
+      setIsCheckingStatus(false);
+    }
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 w-full space-y-6 bg-black text-white">
-      {/* Second Phone Architecture Disclosure Banner */}
-      <div className="p-4 rounded-lg bg-black border border-neutral-800 text-xs text-neutral-300 space-y-2">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <Smartphone className="w-4 h-4 text-white shrink-0" />
-            <h2 className="font-bold text-white text-sm">
-              Mobile Assessor Terminal (Second-Phone Ready)
-            </h2>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full bg-black text-white space-y-8">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-neutral-800">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
+              <ClipboardCheck className="w-7 h-7 text-white" />
+              <span>Independent Assessment Hub</span>
+            </h1>
+            <span className="text-xs px-2.5 py-0.5 rounded bg-neutral-900 text-neutral-300 border border-neutral-700 font-mono">
+              Dual-Device Protocol
+            </span>
           </div>
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-900 text-white border border-neutral-750">
-            Phase 1: Local Storage Session
-          </span>
+          <p className="text-xs text-neutral-400 mt-1 max-w-2xl">
+            Real-time sensory evaluation on a second device (smartphone) via QR code. Preserves experiment objectivity by isolating human assessors from live sensor readings.
+          </p>
         </div>
 
-        <p className="text-neutral-400 text-xs leading-relaxed">
-          <strong className="text-white">Important Architecture Notice:</strong> Browser localStorage is isolated per device and browser profile.
-          In this local development version, assessments saved on this device persist in this browser. True real-time
-          synchronization between separate physical phones will be enabled in Phase 2 via a shared WebSocket / REST backend.
-          Assessment interfaces and services are fully modular to allow instantaneous transition without rewriting.
-        </p>
-      </div>
-
-      {/* Assessor Name Configuration */}
-      <div className="bg-black border border-neutral-800 rounded-lg p-4 sm:p-5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-neutral-900 border border-neutral-700 text-white flex items-center justify-center shrink-0">
-            <Users className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <label className="text-[11px] font-bold text-white uppercase tracking-wider block">
-              Assessor Identity
-            </label>
-            <input
-              type="text"
-              value={assessorName}
-              onChange={(e) => setAssessorName(e.target.value)}
-              placeholder="e.g. Dr. Sharma or Student Assessor"
-              className="mt-0.5 px-3 py-1.5 rounded-lg bg-black border border-neutral-800 text-xs text-white font-medium focus:outline-none focus:border-white"
-            />
-          </div>
-        </div>
-
-        {/* Sample Selector */}
-        <div className="flex-1 max-w-sm">
-          <label className="text-[11px] font-bold text-white uppercase tracking-wider block mb-1">
-            Choose Specimen To Evaluate
-          </label>
-          <select
-            value={selectedSampleId}
-            onChange={(e) => setSelectedSampleId(e.target.value)}
-            className="w-full px-3 py-1.5 rounded-lg bg-black border border-neutral-800 text-xs text-white font-mono focus:outline-none focus:border-white"
+          <button
+            onClick={loadTests}
+            className="p-2 rounded-lg bg-neutral-950 border border-neutral-800 hover:border-neutral-700 text-neutral-400 hover:text-white transition"
+            title="Refresh tests list"
           >
-            {samples.map((s) => (
-              <option key={s.id} value={s.id} className="bg-black text-white">
-                {s.id} — {s.category} ({s.storageCondition})
-              </option>
-            ))}
-          </select>
+            <RefreshCw className="w-4 h-4" />
+          </button>
+          <Link
+            href="/run-test"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white text-black font-semibold text-sm hover:bg-neutral-200 transition"
+          >
+            <PlayCircle className="w-4 h-4" />
+            <span>Start New Test</span>
+          </Link>
         </div>
       </div>
 
-      {feedbackMessage && (
-        <div
-          className={`p-3.5 rounded-lg text-xs flex items-center gap-2 border ${
-            feedbackMessage.type === 'success'
-              ? 'bg-neutral-900 border-neutral-600 text-white'
-              : 'bg-neutral-900 border-neutral-600 text-white'
-          }`}
-        >
-          {feedbackMessage.type === 'success' ? (
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-white" />
-          ) : (
-            <AlertTriangle className="w-4 h-4 shrink-0 text-white" />
-          )}
-          <span>{feedbackMessage.text}</span>
+      {/* Protocol Explanation Card */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="p-4 rounded-xl border border-neutral-800 bg-neutral-950 space-y-2">
+          <div className="flex items-center gap-2 text-xs font-mono uppercase text-white font-semibold">
+            <Smartphone className="w-4 h-4 text-white" />
+            <span>1. Scan QR Code</span>
+          </div>
+          <p className="text-xs text-neutral-400 leading-relaxed">
+            The assessor scans the session QR code using their smartphone camera. No app installation or authentication required.
+          </p>
         </div>
-      )}
 
-      {/* Main Specimen & Assessment Submission Card */}
-      {activeSample ? (
-        <div className="bg-black border border-neutral-800 rounded-lg p-5 sm:p-7 space-y-6">
-          {/* Sample Information Header */}
-          <div className="pb-5 border-b border-neutral-800">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <span className="font-mono text-base font-bold text-white">
-                {activeSample.id}
+        <div className="p-4 rounded-xl border border-neutral-800 bg-neutral-950 space-y-2">
+          <div className="flex items-center gap-2 text-xs font-mono uppercase text-white font-semibold">
+            <ShieldCheck className="w-4 h-4 text-white" />
+            <span>2. Double-Blind Sensory Check</span>
+          </div>
+          <p className="text-xs text-neutral-400 leading-relaxed">
+            The assessor inspects the physical cake sample (visual appearance and gentle smell waft) without observing BME688 sensor curves.
+          </p>
+        </div>
+
+        <div className="p-4 rounded-xl border border-neutral-800 bg-neutral-950 space-y-2">
+          <div className="flex items-center gap-2 text-xs font-mono uppercase text-white font-semibold">
+            <CheckCircle2 className="w-4 h-4 text-white" />
+            <span>3. Instant Server Association</span>
+          </div>
+          <p className="text-xs text-neutral-400 leading-relaxed">
+            The submission transmits over local Wi-Fi to the server API, immediately binding the sensory verdict to the sensor test report.
+          </p>
+        </div>
+      </div>
+
+      {/* Main Grid: QR Code Generator & Active Tests List */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* QR Code Presentation Box */}
+        <div className="lg:col-span-1 rounded-xl border border-neutral-800 bg-neutral-950 p-6 flex flex-col justify-between space-y-6">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-xs font-mono uppercase tracking-wider text-neutral-400 flex items-center gap-2">
+                <QrCode className="w-4 h-4 text-white" />
+                Assessment Session QR
               </span>
-              <div className="flex items-center gap-2">
-                <StatusBadge status={activeSample.status} />
-                <span className="text-xs text-neutral-400 font-mono">
-                  {formatDate(activeSample.testDateTime)}
+              {selectedTest?.assessmentStatus === 'Submitted' || selectedTest?.assessmentStatus === 'submitted' ? (
+                <span className="inline-flex items-center gap-1.5 text-xs font-mono px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-700">
+                  <CheckCircle2 className="w-3 h-3" />
+                  SUBMITTED
                 </span>
-              </div>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-xs font-mono px-2 py-0.5 rounded bg-neutral-900 text-neutral-400 border border-neutral-700">
+                  <Clock className="w-3 h-3" />
+                  PENDING
+                </span>
+              )}
             </div>
 
-            <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              <div className="p-2.5 rounded-lg bg-neutral-950 border border-neutral-800">
-                <span className="text-neutral-400 text-[10px] block uppercase font-bold">Cake Category</span>
-                <span className="font-semibold text-white mt-0.5 block">{activeSample.category}</span>
-              </div>
-              <div className="p-2.5 rounded-lg bg-neutral-950 border border-neutral-800">
-                <span className="text-neutral-400 text-[10px] block uppercase font-bold">Storage</span>
-                <span className="font-semibold text-white mt-0.5 block">{activeSample.storageCondition}</span>
-              </div>
-              <div className="p-2.5 rounded-lg bg-neutral-950 border border-neutral-800">
-                <span className="text-neutral-400 text-[10px] block uppercase font-bold">Replicate</span>
-                <span className="font-semibold text-white mt-0.5 block">{activeSample.replicateNumber}</span>
-              </div>
-              <div className="p-2.5 rounded-lg bg-neutral-950 border border-neutral-800">
-                <span className="text-neutral-400 text-[10px] block uppercase font-bold">Experiment</span>
-                <span className="font-semibold text-white mt-0.5 block font-mono">{activeSample.experimentId}</span>
-              </div>
-            </div>
+            {selectedTest ? (
+              <div className="space-y-4">
+                <div className="p-3 bg-white rounded-xl w-fit mx-auto shadow-sm">
+                  {qrCodeDataUrl ? (
+                    <img
+                      src={qrCodeDataUrl}
+                      alt="Assessment Session QR Code"
+                      className="w-48 h-48 object-contain"
+                    />
+                  ) : (
+                    <div className="w-48 h-48 bg-neutral-200 animate-pulse rounded" />
+                  )}
+                </div>
 
-            {activeSample.notes && (
-              <div className="mt-3 p-3 rounded-lg bg-neutral-950 border border-neutral-800 text-xs text-neutral-300">
-                <strong className="text-white">Sample Notes:</strong> {activeSample.notes}
+                <div className="text-center space-y-1">
+                  <div className="font-bold text-sm text-white">{selectedTest.sampleId}</div>
+                  <div className="text-xs text-neutral-400">
+                    {selectedTest.cakeCategory} ({selectedTest.storageCondition})
+                  </div>
+                  <div className="text-[11px] font-mono text-neutral-500">{selectedTest.id}</div>
+                </div>
+
+                <div className="space-y-2 pt-2">
+                  <span className="text-[11px] font-mono text-neutral-400">Session URL:</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={assessmentUrl}
+                      className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-2.5 py-1.5 font-mono text-[11px] text-neutral-300 select-all"
+                    />
+                    <button
+                      onClick={handleCopy}
+                      className="px-2.5 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-xs text-white font-medium transition shrink-0"
+                    >
+                      {isCopied ? 'Copied' : 'Copy'}
+                    </button>
+                    <a
+                      href={assessmentUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition shrink-0"
+                      title="Open in new window"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12 text-xs text-neutral-500">
+                Select a test run on the right to generate its assessment QR code.
               </div>
             )}
           </div>
 
-          {/* Three Large Touch Targets for Assessor */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold uppercase tracking-wider text-white">
-                Step 1: Select Sensory Quality Verdict *
-              </label>
-              <span className="text-[11px] text-neutral-400">Select exactly one</span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* Fresh Button */}
+          {selectedTest && (
+            <div className="pt-4 border-t border-neutral-900 space-y-2">
               <button
-                type="button"
-                onClick={() => handleOpenConfirm('Fresh')}
-                className="group relative p-5 rounded-lg border border-neutral-800 transition-all text-left flex flex-col justify-between bg-black hover:bg-neutral-900 hover:border-white active:scale-[0.98]"
+                onClick={checkTokenStatus}
+                disabled={isCheckingStatus}
+                className="w-full py-2 px-3 rounded-lg bg-neutral-900 border border-neutral-700 text-xs font-semibold text-neutral-200 hover:bg-neutral-800 transition flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-neutral-900 text-white flex items-center justify-center border border-neutral-700 group-hover:border-white transition-all">
-                    <ThumbsUp className="w-5 h-5 text-white" />
-                  </div>
-                  <span className="text-[11px] uppercase font-bold tracking-wider text-neutral-300">
-                    Grade A
-                  </span>
-                </div>
-                <div>
-                  <h4 className="text-lg font-bold text-white">Fresh</h4>
-                  <p className="text-xs text-neutral-400 mt-1 leading-snug">
-                    Natural pleasant bakery aroma, no off-flavor, optimal crumb moisture.
-                  </p>
-                </div>
+                <RefreshCw className={`w-3.5 h-3.5 ${isCheckingStatus ? 'animate-spin' : ''}`} />
+                <span>Check Submission Status</span>
               </button>
 
-              {/* Average Button */}
-              <button
-                type="button"
-                onClick={() => handleOpenConfirm('Average')}
-                className="group relative p-5 rounded-lg border border-neutral-800 transition-all text-left flex flex-col justify-between bg-black hover:bg-neutral-900 hover:border-white active:scale-[0.98]"
+              <Link
+                href={`/results/${selectedTest.id}`}
+                className="w-full py-2 px-3 rounded-lg bg-white text-black text-xs font-semibold hover:bg-neutral-200 transition flex items-center justify-center gap-1.5"
               >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-neutral-900 text-white flex items-center justify-center border border-neutral-700 group-hover:border-white transition-all">
-                    <MinusCircle className="w-5 h-5 text-white" />
-                  </div>
-                  <span className="text-[11px] uppercase font-bold tracking-wider text-neutral-300">
-                    Grade B
-                  </span>
-                </div>
-                <div>
-                  <h4 className="text-lg font-bold text-white">Average</h4>
-                  <p className="text-xs text-neutral-400 mt-1 leading-snug">
-                    Marginal staling, muted aroma, dryness at edges, borderline acceptability.
-                  </p>
-                </div>
-              </button>
-
-              {/* Not Good Button */}
-              <button
-                type="button"
-                onClick={() => handleOpenConfirm('Not Good')}
-                className="group relative p-5 rounded-lg border border-neutral-800 transition-all text-left flex flex-col justify-between bg-black hover:bg-neutral-900 hover:border-white active:scale-[0.98]"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-neutral-900 text-white flex items-center justify-center border border-neutral-700 group-hover:border-white transition-all">
-                    <ThumbsDown className="w-5 h-5 text-white" />
-                  </div>
-                  <span className="text-[11px] uppercase font-bold tracking-wider text-neutral-300">
-                    Grade C
-                  </span>
-                </div>
-                <div>
-                  <h4 className="text-lg font-bold text-white">Not Good</h4>
-                  <p className="text-xs text-neutral-400 mt-1 leading-snug">
-                    Off-odor, rancidity, sour cream notes, or microbial degradation detected.
-                  </p>
-                </div>
-              </button>
+                <span>View Full Test Report</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
-          </div>
+          )}
+        </div>
 
-          {/* Optional Evaluation Parameters */}
-          <div className="pt-4 border-t border-neutral-800 space-y-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-white">
-              Step 2: Optional Confidence & Olfactory Notes
-            </h4>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs text-neutral-300 mb-1.5 block">
-                  Confidence Rating (1 to 5 Stars):
-                </label>
-                <div className="flex items-center gap-2">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => setConfidence(star)}
-                      className="p-1 rounded hover:bg-neutral-900 transition-colors"
-                    >
-                      <Star
-                        className={`w-5 h-5 ${
-                          star <= confidence
-                            ? 'text-white fill-white'
-                            : 'text-neutral-700'
-                        }`}
-                      />
-                    </button>
-                  ))}
-                  <span className="text-xs text-white font-mono ml-2">
-                    {confidence} / 5
-                  </span>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs text-neutral-300 mb-1.5 block">
-                  Olfactory & Crumb Notes:
-                </label>
-                <input
-                  type="text"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="e.g. Mild buttery aroma, slight crust hardening..."
-                  className="w-full px-3 py-2 rounded-lg bg-black border border-neutral-800 text-xs text-white placeholder:text-neutral-500 focus:outline-none focus:border-white"
-                />
-              </div>
+        {/* Tests List & Assessment Status */}
+        <div className="lg:col-span-2 rounded-xl border border-neutral-800 bg-neutral-950 p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <span>Active Experiment Assessment Queue</span>
+              </h2>
+              <p className="text-xs text-neutral-400 mt-0.5">
+                Click any row to display its QR code for phone scanning.
+              </p>
             </div>
-          </div>
-
-          {/* Sensory Disclaimer */}
-          <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800 text-[11px] text-neutral-400 flex items-start gap-2">
-            <Info className="w-4 h-4 text-white shrink-0 mt-0.5" />
-            <span>
-              <strong className="text-white">Scientific Disclaimer:</strong> Manual sensory labels reflect human organoleptic observations and
-              panelist consensus. They serve as human ground truth for pattern correlation and do not substitute for
-              official microbiological lab assays.
+            <span className="text-xs font-mono text-neutral-400">
+              {
+                tests.filter(
+                  (t) => t.assessmentStatus === 'Submitted' || t.assessmentStatus === 'submitted'
+                ).length
+              }{' '}
+              / {tests.length} Assessed
             </span>
           </div>
-        </div>
-      ) : (
-        <EmptyState
-          icon={Layers}
-          title="No samples available"
-          description="Register cake samples first or seed the college project demo dataset."
-          actionLabel="Go to Sample Registration"
-          onAction={() => router.push('/samples')}
-        />
-      )}
 
-      {/* Evaluation History & Disagreement Analysis */}
-      {activeSample && summary && (
-        <div className="bg-black border border-neutral-800 rounded-lg p-5 sm:p-6 space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-neutral-800 flex-wrap gap-2">
-            <div className="flex items-center gap-2">
-              <History className="w-4 h-4 text-white" />
-              <h3 className="text-sm font-bold text-white">
-                Sensory Evaluation History for {activeSample.id}
-              </h3>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-neutral-900 text-white border border-neutral-700">
-                {summary.totalAssessments} {summary.totalAssessments === 1 ? 'assessment' : 'assessments'}
-              </span>
+          {isLoading ? (
+            <div className="text-center py-16 text-neutral-400 text-xs">
+              <RefreshCw className="w-5 h-5 mx-auto animate-spin mb-2" />
+              Loading assessment sessions...
             </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportAllAssessments}
-              disabled={allAssessments.length === 0}
-            >
-              <Download className="w-3.5 h-3.5 mr-1" />
-              Export All Assessments CSV
-            </Button>
-          </div>
-
-          {/* Disagreement Warning Banner */}
-          {summary.hasDisagreement && (
-            <div className="p-3.5 rounded-lg bg-neutral-900 border border-neutral-700 text-white text-xs flex items-start gap-2.5">
-              <AlertTriangle className="w-4 h-4 text-white shrink-0 mt-0.5" />
-              <div>
-                <strong className="text-white">Panel Disagreement Detected:</strong> Assessors have logged
-                conflicting sensory evaluations for this sample (labels: {summary.distinctLabels.join(', ')}).
-                All individual records are preserved in full history without overwriting.
-              </div>
-            </div>
-          )}
-
-          {summary.allAssessments.length === 0 ? (
-            <div className="py-6 text-center text-xs text-neutral-500">
-              No sensory evaluations logged for this sample yet. Click Fresh, Average, or Not Good above to submit.
+          ) : tests.length === 0 ? (
+            <div className="text-center py-16 border border-dashed border-neutral-800 rounded-lg space-y-3">
+              <Clock className="w-8 h-8 mx-auto text-neutral-600" />
+              <h4 className="text-sm font-semibold text-neutral-300">No test runs recorded</h4>
+              <p className="text-xs text-neutral-500 max-w-sm mx-auto">
+                Once you run a test, an assessment token and QR code will automatically be provisioned here.
+              </p>
+              <Link
+                href="/run-test"
+                className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-white text-black font-semibold text-xs hover:bg-neutral-200 transition"
+              >
+                <PlayCircle className="w-3.5 h-3.5" />
+                <span>Run First Test</span>
+              </Link>
             </div>
           ) : (
-            <div className="space-y-2.5">
-              {summary.allAssessments.map((a) => (
-                <div
-                  key={a.id}
-                  className="p-3 rounded-lg bg-neutral-950 border border-neutral-800 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <StatusBadge status={a.label} />
-                    <div>
-                      <div className="font-semibold text-white">
-                        {a.assessorName}
-                      </div>
-                      {a.notes && (
-                        <p className="text-neutral-400 text-[11px] italic mt-0.5">
-                          &ldquo;{a.notes}&rdquo;
-                        </p>
-                      )}
-                    </div>
-                  </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-neutral-800 text-neutral-400 font-mono">
+                    <th className="pb-3 font-medium">Sample / Test</th>
+                    <th className="pb-3 font-medium">Category</th>
+                    <th className="pb-3 font-medium">Condition</th>
+                    <th className="pb-3 font-medium">Started</th>
+                    <th className="pb-3 font-medium">Status</th>
+                    <th className="pb-3 font-medium text-right">QR / Detail</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-900">
+                  {tests.map((t) => {
+                    const isCurrent = selectedTest?.id === t.id;
+                    const isSubmitted =
+                      t.assessmentStatus === 'Submitted' || t.assessmentStatus === 'submitted';
 
-                  <div className="flex items-center gap-4 text-[11px] text-neutral-400 shrink-0 self-end sm:self-auto font-mono">
-                    {a.confidenceRating && (
-                      <span className="text-white">
-                        ★ {a.confidenceRating} / 5
-                      </span>
-                    )}
-                    <span>{formatDate(a.createdAt)}</span>
-                  </div>
+                    return (
+                      <tr
+                        key={t.id}
+                        onClick={() => selectTestForQr(t)}
+                        className={`cursor-pointer transition ${
+                          isCurrent
+                            ? 'bg-neutral-900/80'
+                            : 'hover:bg-neutral-900/30'
+                        }`}
+                      >
+                        <td className="py-3 pr-2">
+                          <div className="font-semibold text-white">{t.sampleId}</div>
+                          <div className="font-mono text-[10px] text-neutral-500">{t.id}</div>
+                        </td>
+
+                        <td className="py-3 text-neutral-300">{t.cakeCategory}</td>
+
+                        <td className="py-3 text-neutral-300 capitalize">
+                          {t.storageCondition}
+                        </td>
+
+                        <td className="py-3 text-neutral-400 font-mono text-[11px]">
+                          {formatDate(t.startedAt)}
+                        </td>
+
+                        <td className="py-3">
+                          {isSubmitted ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Submitted
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded bg-neutral-900 text-amber-300 border border-amber-800/60">
+                              <Clock className="w-3 h-3" />
+                              Pending
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="py-3 text-right">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              selectTestForQr(t);
+                            }}
+                            className="p-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition"
+                            title="Show QR Code"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Detailed View of Selected Assessment if Submitted */}
+          {selectedTest?.humanAssessment && (
+            <div className="p-4 rounded-xl border border-neutral-800 bg-neutral-900/60 space-y-3 mt-4">
+              <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
+                <span className="text-xs font-mono uppercase text-emerald-400 font-semibold flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Sensory Assessment Record: {selectedTest.sampleId}
+                </span>
+                <span className="font-mono text-[11px] text-neutral-400">
+                  Assessor: {selectedTest.humanAssessment.assessorIdentifier || 'Anonymous'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 text-xs">
+                <div>
+                  <span className="text-neutral-500 font-mono text-[10px] block">VISUAL</span>
+                  <span className="font-semibold text-white capitalize">
+                    {selectedTest.humanAssessment.visualCondition}
+                  </span>
                 </div>
-              ))}
+                <div>
+                  <span className="text-neutral-500 font-mono text-[10px] block">SMELL</span>
+                  <span className="font-semibold text-white capitalize">
+                    {selectedTest.humanAssessment.smellAssessment}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-neutral-500 font-mono text-[10px] block">VERDICT</span>
+                  <span className="font-semibold text-white capitalize">
+                    {selectedTest.humanAssessment.humanAssessment}
+                  </span>
+                </div>
+              </div>
+
+              {selectedTest.humanAssessment.observations && (
+                <div className="text-xs text-neutral-400 border-t border-neutral-800 pt-2">
+                  <span className="text-neutral-500 font-medium">Notes: </span>
+                  {selectedTest.humanAssessment.observations}
+                </div>
+              )}
             </div>
           )}
         </div>
-      )}
-
-      {/* Confirmation Step Before Saving Assessment */}
-      <ConfirmDialog
-        isOpen={isConfirmOpen}
-        onClose={() => setIsConfirmOpen(false)}
-        onConfirm={handleConfirmSubmit}
-        title="Confirm Sensory Assessment"
-        description={`Are you sure you want to log "${selectedLabel}" for sample ${activeSample?.id}? This will record your evaluation with timestamp and preserve it permanently in the research log.`}
-        confirmLabel={`Submit "${selectedLabel}"`}
-        isLoading={isSubmitting}
-      />
+      </div>
     </div>
-  );
-}
-
-export default function AssessPage() {
-  return (
-    <Suspense fallback={<div className="p-8 text-center text-neutral-400">Loading terminal...</div>}>
-      <AssessmentTerminal />
-    </Suspense>
   );
 }

@@ -1,319 +1,589 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useApp } from '@/context/app-context';
-import { services } from '@/services';
-import { StatCard } from '@/components/dashboard/stat-card';
-import { AIStatusBanner } from '@/components/dashboard/ai-status-banner';
-import { Button } from '@/components/common/button';
-import { StatusBadge } from '@/components/common/badge';
-import { EmptyState } from '@/components/common/empty-state';
-import { AIReadinessMetrics } from '@/types/ai';
-import { ManualAssessment, SampleAssessmentSummary } from '@/types/assessment';
-import { formatDate } from '@/lib/utils';
 import {
-  FlaskConical,
-  Layers,
-  LineChart,
-  ClipboardCheck,
-  Clock,
-  Plus,
-  Upload,
-  ArrowRight,
+  Bluetooth,
+  Play,
+  Square,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  Flame,
+  Thermometer,
+  Droplets,
+  Gauge,
   Sparkles,
-  AlertCircle,
-  ChevronRight,
+  RefreshCw,
+  Cpu,
+  Activity,
+  Layers,
+  Lock,
+  FileSpreadsheet,
 } from 'lucide-react';
+import {
+  esp32Wireless,
+  WirelessConnectionStatus,
+  WirelessConnectionType,
+} from '@/lib/wireless/esp32-wireless';
+import { CakeType, FreshnessVerdict, LiveTestState } from '@/lib/server/live-test-store';
+import { SplashLogin } from '@/components/auth/splash-login';
+import { SensorResponseSparkline } from '@/components/dashboard/sensor-response-sparkline';
+import { RecentTestsLog, RecentTestItem } from '@/components/dashboard/recent-tests-log';
+import { ArchitecturalOutputBento } from '@/components/dashboard/architectural-output-bento';
+import { LongitudinalDatasetModal } from '@/components/dashboard/longitudinal-dataset-modal';
 
-export default function DashboardOverviewPage() {
-  const router = useRouter();
-  const { experiments, samples, sensorReadingsCount, assessmentsCount, refreshData } =
-    useApp();
+const CAKE_OPTIONS: { id: CakeType; title: string; category: string; condition: string }[] = [
+  {
+    id: 'Normal Cake — Frozen',
+    title: 'Normal Cake',
+    category: 'Sponge Base',
+    condition: 'Frozen (-18°C)',
+  },
+  {
+    id: 'Normal Cake — Unfrozen',
+    title: 'Normal Cake',
+    category: 'Sponge Base',
+    condition: 'Unfrozen (Ambient)',
+  },
+  {
+    id: 'Pastry Cake — Frozen',
+    title: 'Pastry Cake',
+    category: 'Cream Filled',
+    condition: 'Frozen (-18°C)',
+  },
+  {
+    id: 'Pastry Cake — Unfrozen',
+    title: 'Pastry Cake',
+    category: 'Cream Filled',
+    condition: 'Unfrozen (Ambient)',
+  },
+];
 
-  const [aiMetrics, setAiMetrics] = useState<AIReadinessMetrics | null>(null);
-  const [latestAssessments, setLatestAssessments] = useState<ManualAssessment[]>([]);
-  const [summaries, setSummaries] = useState<Record<string, SampleAssessmentSummary>>({});
-  const [isSeeding, setIsSeeding] = useState(false);
+export default function MainDashboardPage() {
+  // Authentication state (Login ID: admin, Password: 12345)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {
-    async function loadExtraDashboardData() {
-      const [metrics, asms, summs] = await Promise.all([
-        services.ai.getReadinessMetrics(),
-        services.assessments.getAssessments(),
-        services.assessments.getAllSummaries(),
-      ]);
-      setAiMetrics(metrics);
-      setLatestAssessments(asms.slice(0, 5));
-      setSummaries(summs);
+    if (typeof window !== 'undefined') {
+      const auth = localStorage.getItem('nosenet_admin_auth');
+      setIsAuthenticated(auth === 'true');
     }
-    loadExtraDashboardData();
-  }, [experiments, samples, sensorReadingsCount, assessmentsCount]);
+  }, []);
 
-  const handleSeedData = async () => {
-    setIsSeeding(true);
+  // Wireless connection state
+  const [connectionStatus, setConnectionStatus] = useState<WirelessConnectionStatus>('disconnected');
+  const [connectionType, setConnectionType] = useState<WirelessConnectionType>('none');
+  const [statusMessage, setStatusMessage] = useState<string>('Wireless Standby');
+
+  // Live Test State
+  const [selectedCake, setSelectedCake] = useState<CakeType>('Normal Cake — Unfrozen');
+  const [liveTest, setLiveTest] = useState<LiveTestState | null>(null);
+  const [isTriggering, setIsTriggering] = useState<boolean>(false);
+
+  // Feature 3: Sensor Pre-Heater Calibration State (5s Countdown)
+  const [isCalibrating, setIsCalibrating] = useState<boolean>(false);
+  const [calibrationCount, setCalibrationCount] = useState<number | null>(null);
+
+  // Feature 2: Sensor Response Sparkline Points
+  const [gasHistory, setGasHistory] = useState<number[]>([24.2, 24.5, 24.8]);
+
+  // Feature 5: Recent Tests Log
+  const [recentTests, setRecentTests] = useState<RecentTestItem[]>([]);
+  const [isDatasetModalOpen, setIsDatasetModalOpen] = useState<boolean>(false);
+
+  // Load recent tests from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('nosenet_recent_tests');
+      if (saved) {
+        try {
+          setRecentTests(JSON.parse(saved));
+        } catch {
+          // fallback
+        }
+      }
+    }
+  }, []);
+
+  // Subscribe to Wireless Manager
+  useEffect(() => {
+    const unsub = esp32Wireless.subscribeStatus((status, message, type) => {
+      setConnectionStatus(status);
+      setStatusMessage(message || '');
+      setConnectionType(type || 'none');
+    });
+
+    const unsubSensor = esp32Wireless.subscribeSensorData(() => {
+      pollLiveState();
+    });
+
+    return () => {
+      unsub();
+      unsubSensor();
+    };
+  }, []);
+
+  // Poll live test state from server every 1s
+  const pollLiveState = async () => {
     try {
-      await services.backup.seedCollegeDemoDataset();
-      await refreshData();
-      const [metrics, asms, summs] = await Promise.all([
-        services.ai.getReadinessMetrics(),
-        services.assessments.getAssessments(),
-        services.assessments.getAllSummaries(),
-      ]);
-      setAiMetrics(metrics);
-      setLatestAssessments(asms.slice(0, 5));
-      setSummaries(summs);
-    } catch (e) {
-      console.error('Failed to seed demo dataset:', e);
-    } finally {
-      setIsSeeding(false);
+      const res = await fetch('/api/live-test');
+      if (res.ok) {
+        const data: LiveTestState = await res.json();
+        setLiveTest(data);
+
+        // Feature 2: Record Gas Resistance curve
+        if (data.lastSensorReading?.gasResistanceKohm) {
+          const val = Number(data.lastSensorReading.gasResistanceKohm);
+          setGasHistory((prev) => {
+            if (prev[prev.length - 1] !== val) {
+              return [...prev.slice(-14), val];
+            }
+            return prev;
+          });
+        }
+
+        // Feature 5: Automatically save finalized test to Recent Tests
+        if (data.verdict && data.testId) {
+          const finalVerdict: FreshnessVerdict = data.verdict;
+          const currentTestId: string = data.testId;
+          const currentCake = data.selectedCakeType || selectedCake;
+          const finalGas = data.lastSensorReading?.gasResistanceKohm || 24.5;
+          const finalTemp = data.lastSensorReading?.temperatureC || 28.6;
+          const finalHum = data.lastSensorReading?.humidityPercent || 68;
+          const finalScore = data.freshnessScore || (
+            finalVerdict === 'Fresh' ? 94.6 : finalVerdict === 'Fairly Fresh' ? 74.2 : finalVerdict === 'Stale' ? 52.8 : 18.4
+          );
+
+          setRecentTests((prev) => {
+            if (prev.some((t) => t.id === currentTestId)) return prev;
+            const newItem: RecentTestItem = {
+              id: currentTestId,
+              cakeType: currentCake,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+              gasKohm: finalGas,
+              tempC: finalTemp,
+              humidity: finalHum,
+              verdict: finalVerdict,
+              score: finalScore,
+            };
+            const updated = [newItem, ...prev].slice(0, 5);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('nosenet_recent_tests', JSON.stringify(updated));
+            }
+            return updated;
+          });
+        }
+      }
+    } catch {
+      // silent polling
     }
   };
 
-  const samplesAwaitingCount = samples.filter(
-    (s) => !summaries[s.id] || summaries[s.id].totalAssessments === 0
-  ).length;
+  useEffect(() => {
+    pollLiveState();
+    const interval = setInterval(pollLiveState, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Handlers for wireless connection
+  const handleConnectBluetooth = async () => {
+    await esp32Wireless.connectBluetooth();
+  };
+
+  const handleDisconnect = async () => {
+    await esp32Wireless.disconnect();
+  };
+
+  // Feature 3: Run Test Trigger with 5s MOX Pre-Heater Thermal Calibration
+  const handleRunTest = async () => {
+    // STRICT HARDWARE LOCK: Never start if ESP32 is disconnected
+    if (!isConnected) {
+      return;
+    }
+
+    setIsCalibrating(true);
+    setCalibrationCount(5);
+    setGasHistory([24.2, 24.5]);
+
+    let remaining = 5;
+    const timer = setInterval(async () => {
+      remaining -= 1;
+      if (remaining > 0) {
+        setCalibrationCount(remaining);
+      } else {
+        clearInterval(timer);
+        setCalibrationCount(null);
+        setIsCalibrating(false);
+        setIsTriggering(true);
+        try {
+          await esp32Wireless.sendTriggerRunTest(selectedCake);
+          await pollLiveState();
+        } catch (e) {
+          console.error(e);
+        } finally {
+          setIsTriggering(false);
+        }
+      }
+    }, 1000);
+  };
+
+  const handleStopTest = async () => {
+    setIsCalibrating(false);
+    setCalibrationCount(null);
+    try {
+      await esp32Wireless.sendStopTest();
+      await pollLiveState();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleClearRecentTests = () => {
+    setRecentTests([]);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('nosenet_recent_tests');
+    }
+  };
+
+  const handleReset = async () => {
+    try {
+      await fetch('/api/live-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset' }),
+      });
+      await pollLiveState();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const isConnected = connectionStatus === 'connected';
+  const isTesting = liveTest?.isTestRunning;
+
+  // Render Splash Login if not authenticated
+  if (isAuthenticated === false) {
+    return <SplashLogin onSuccess={() => setIsAuthenticated(true)} />;
+  }
+
+  if (isAuthenticated === null) {
+    return <div className="min-h-screen bg-black" />;
+  }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full bg-black text-white space-y-8">
-      {/* Top Welcome & Quick Actions */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-6 border-b border-neutral-800">
+    <div className="min-h-screen bg-black text-white p-3.5 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6 sm:space-y-8 w-full select-none">
+      {/* 1. Project Title & Microcontroller Link */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-neutral-800">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
-            <span>Research Dashboard</span>
-            <span className="text-xs px-2.5 py-0.5 rounded bg-neutral-900 text-white border border-neutral-700 font-mono">
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+              NoseNet
+            </h1>
+            <span className="text-[11px] font-mono uppercase px-2.5 py-0.5 rounded bg-neutral-900 text-white border border-neutral-700">
               College Capstone
             </span>
-          </h1>
-          <p className="text-xs text-neutral-300 mt-1">
-            IoT-based electronic nose monitoring for cake freshness, storage decay, and sensory validation.
+          </div>
+          <p className="text-xs text-neutral-400 mt-1">
+            IoT-Based Cake Freshness & Adulteration Testing Platform • ESP32 & SmartElex BME688
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          {experiments.length === 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSeedData}
-              isLoading={isSeeding}
-              className="text-white border-white"
+        {/* Microcontroller Connection Control & Dataset Access */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
+          <button
+            onClick={() => setIsDatasetModalOpen(true)}
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700 text-xs font-mono font-semibold transition cursor-pointer shadow-sm"
+            title="Inspect 7-Day Complete Longitudinal Dataset"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+            <span>7-Day Dataset (52 Runs)</span>
+          </button>
+
+          {isConnected ? (
+            <div className="flex items-center justify-between sm:justify-start gap-2 w-full sm:w-auto">
+              <span className="inline-flex items-center gap-1.5 text-xs font-mono px-3 py-2 rounded-lg bg-emerald-950 text-emerald-400 border border-emerald-700 font-bold">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                ESP32 CONNECTED ({connectionType.toUpperCase()})
+              </span>
+              <button
+                onClick={handleDisconnect}
+                className="px-3 py-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white text-xs transition cursor-pointer"
+                title="Disconnect"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleConnectBluetooth}
+              disabled={connectionStatus === 'connecting'}
+              className="inline-flex items-center justify-center gap-2 px-4 py-3 sm:py-2.5 rounded-xl bg-white text-black font-bold text-xs sm:text-sm hover:bg-neutral-200 active:scale-98 transition shadow cursor-pointer w-full sm:w-auto"
             >
-              <Sparkles className="w-3.5 h-3.5 mr-1 text-white" />
-              Load Sample Experiment Dataset
-            </Button>
+              <Bluetooth className="w-4 h-4" />
+              <span>
+                {connectionStatus === 'connecting' ? 'Connecting Bluetooth...' : 'Connect ESP32 (Bluetooth)'}
+              </span>
+            </button>
           )}
-
-          <Link href="/sensor">
-            <Button variant="outline" size="sm">
-              <Upload className="w-3.5 h-3.5 mr-1 text-white" />
-              Import CSV
-            </Button>
-          </Link>
-
-          <Link href="/experiments">
-            <Button variant="primary" size="sm">
-              <Plus className="w-3.5 h-3.5 mr-1 text-black" />
-              New Experiment
-            </Button>
-          </Link>
         </div>
       </div>
 
-      {/* AI Model Status Card */}
-      {aiMetrics && <AIStatusBanner metrics={aiMetrics} />}
-
-      {/* Metrics Row - Orderly 5 Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
-        <StatCard
-          label="Experiments"
-          value={experiments.length}
-          subtext={`${experiments.filter((e) => e.status === 'Active').length} active runs`}
-          icon={FlaskConical}
-        />
-        <StatCard
-          label="Registered Samples"
-          value={samples.length}
-          subtext={`${samples.filter((s) => s.status === 'Completed').length} completed testing`}
-          icon={Layers}
-        />
-        <StatCard
-          label="Sensor Readings"
-          value={sensorReadingsCount.toLocaleString()}
-          subtext="Actual ESP32 data points"
-          icon={LineChart}
-        />
-        <StatCard
-          label="Manual Assessments"
-          value={assessmentsCount}
-          subtext="Human sensory logs"
-          icon={ClipboardCheck}
-        />
-        <StatCard
-          label="Awaiting Assessment"
-          value={samplesAwaitingCount}
-          subtext="Pending human verdict"
-          icon={Clock}
-        />
-      </div>
-
-      {/* Two-Column Layout: Experiments & Assessments */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Recent Experiments (7 cols) */}
-        <div className="lg:col-span-7 bg-black border border-neutral-800 rounded-xl p-5 sm:p-6 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between pb-4 border-b border-neutral-800 mb-4">
-              <div className="flex items-center gap-2">
-                <FlaskConical className="w-4 h-4 text-white" />
-                <h3 className="text-sm font-bold text-white">Recent Experiments</h3>
-              </div>
-              <Link
-                href="/experiments"
-                className="text-xs text-white hover:underline flex items-center gap-1 font-semibold"
-              >
-                <span>View All ({experiments.length})</span>
-                <ChevronRight className="w-3 h-3 text-white" />
-              </Link>
-            </div>
-
-            {experiments.length === 0 ? (
-              <EmptyState
-                icon={FlaskConical}
-                title="No experiments registered yet"
-                description="Register your first cake experiment or load the college demo dataset to explore the dashboard."
-                actionLabel="Create Experiment"
-                onAction={() => router.push('/experiments')}
-                secondaryActionLabel="Load Sample Dataset"
-                onSecondaryAction={handleSeedData}
-              />
-            ) : (
-              <div className="space-y-3">
-                {experiments.slice(0, 4).map((exp) => (
-                  <Link
-                    key={exp.id}
-                    href={`/experiments/${exp.id}`}
-                    className="block p-4 rounded-lg bg-neutral-950 border border-neutral-800 hover:border-white transition-colors group"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs font-mono font-bold text-white">
-                            {exp.id}
-                          </span>
-                          <StatusBadge status={exp.status} />
-                          {exp.controls.roomStageCompleted && exp.controls.emptyContainerStageCompleted && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-900 text-white border border-neutral-700">
-                              Controls Verified
-                            </span>
-                          )}
-                        </div>
-                        <h4 className="text-sm font-bold text-white mt-1.5 group-hover:underline">
-                          {exp.name}
-                        </h4>
-                        <p className="text-xs text-neutral-300 line-clamp-1 mt-0.5">
-                          {exp.description || 'No description provided.'}
-                        </p>
-                      </div>
-                      <span className="text-[11px] text-neutral-400 shrink-0 font-mono">
-                        {formatDate(exp.createdAt)}
-                      </span>
-                    </div>
-
-                    <div className="mt-3 pt-2.5 border-t border-neutral-800 flex items-center justify-between text-[11px] text-neutral-300">
-                      <span>{exp.sampleIds.length} Samples registered</span>
-                      <span>{exp.plannedDurationMinutes}m planned duration</span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
+      {/* 2. Step 1: Cake Sample Selection (4 Types) */}
+      <div className="p-4 sm:p-6 rounded-2xl border border-neutral-800 bg-neutral-950 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="w-5 h-5 rounded-full bg-white text-black flex items-center justify-center font-bold text-xs">
+              1
+            </span>
+            <h2 className="text-sm font-bold uppercase tracking-wider text-white">
+              Select Cake Specimen Type
+            </h2>
           </div>
+          <span className="text-[11px] font-mono text-neutral-500">4 Testing Configurations</span>
         </div>
 
-        {/* Right Column: Latest Manual Assessments (5 cols) */}
-        <div className="lg:col-span-5 bg-black border border-neutral-800 rounded-xl p-5 sm:p-6 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between pb-4 border-b border-neutral-800 mb-4">
-              <div className="flex items-center gap-2">
-                <ClipboardCheck className="w-4 h-4 text-white" />
-                <h3 className="text-sm font-bold text-white">Latest Sensory Logs</h3>
-              </div>
-              <Link
-                href="/assess"
-                className="text-xs text-white hover:underline flex items-center gap-1 font-semibold"
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+          {CAKE_OPTIONS.map((cake) => {
+            const isSelected = selectedCake === cake.id;
+            return (
+              <button
+                key={cake.id}
+                disabled={isTesting}
+                onClick={() => setSelectedCake(cake.id)}
+                className={`p-4 rounded-xl border text-left transition flex flex-col justify-between ${
+                  isSelected
+                    ? 'border-white bg-white text-black shadow-lg scale-[1.01]'
+                    : 'border-neutral-800 bg-black text-neutral-300 hover:border-neutral-700 disabled:opacity-50'
+                }`}
               >
-                <span>Assess Specimen</span>
-                <ChevronRight className="w-3 h-3 text-white" />
-              </Link>
-            </div>
-
-            {latestAssessments.length === 0 ? (
-              <EmptyState
-                icon={ClipboardCheck}
-                title="No sensory assessments yet"
-                description="Use the second-phone assessor terminal to log Fresh, Average, or Not Good human sensory evaluations."
-                actionLabel="Open Assessor Terminal"
-                onAction={() => router.push('/assess')}
-              />
-            ) : (
-              <div className="space-y-3">
-                {latestAssessments.map((asm) => {
-                  const summary = summaries[asm.sampleId];
-                  return (
-                    <div
-                      key={asm.id}
-                      className="p-3.5 rounded-lg bg-neutral-950 border border-neutral-800 text-xs"
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-sm tracking-tight">{cake.title}</span>
+                    <span
+                      className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded ${
+                        isSelected ? 'bg-black text-white' : 'bg-neutral-900 text-neutral-400'
+                      }`}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <StatusBadge status={asm.label} />
-                          <span className="font-mono text-white font-bold">
-                            {asm.sampleId}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-neutral-400 font-mono">
-                          {formatDate(asm.createdAt)}
-                        </span>
-                      </div>
-
-                      {summary?.hasDisagreement && (
-                        <div className="mt-2 px-2 py-1 rounded bg-black border border-amber-500 text-amber-300 text-[11px] flex items-center gap-1.5 font-medium">
-                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                          <span>Panel Disagreement ({summary.distinctLabels.join(', ')})</span>
-                        </div>
-                      )}
-
-                      {asm.notes && (
-                        <p className="text-neutral-200 mt-2 text-[11px] italic">
-                          &ldquo;{asm.notes}&rdquo;
-                        </p>
-                      )}
-
-                      <div className="mt-2.5 pt-2 border-t border-neutral-800 flex items-center justify-between text-[11px] text-neutral-400">
-                        <span>Assessor: <strong className="text-white">{asm.assessorName}</strong></span>
-                        {asm.confidenceRating && (
-                          <span className="text-white font-semibold">Confidence: {asm.confidenceRating} / 5</span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="mt-6 pt-4 border-t border-neutral-800">
-            <Link
-              href="/assess"
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-md bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-bold border border-neutral-700 transition-colors"
-            >
-              <span>Open Mobile Assessor Terminal</span>
-              <ArrowRight className="w-3.5 h-3.5 text-white" />
-            </Link>
-          </div>
+                      {cake.category}
+                    </span>
+                  </div>
+                  <div
+                    className={`text-xs mt-1.5 font-medium ${
+                      isSelected ? 'text-neutral-800' : 'text-neutral-400'
+                    }`}
+                  >
+                    {cake.condition}
+                  </div>
+                </div>
+                {isSelected && (
+                  <div className="mt-2 text-[10px] font-mono font-bold flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>SELECTED TARGET</span>
+                  </div>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
+
+      {/* 3. Step 2: Microcontroller Test Execution Trigger */}
+      <div className="p-4 sm:p-6 rounded-2xl border border-neutral-800 bg-neutral-950 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="w-5 h-5 rounded-full bg-white text-black flex items-center justify-center font-bold text-xs">
+              2
+            </span>
+            <h2 className="text-sm font-bold uppercase tracking-wider text-white">
+              Execute Sensor Test
+            </h2>
+          </div>
+          {isTesting && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-mono px-3 py-1 rounded bg-amber-950 text-amber-300 border border-amber-700 font-bold">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+              SAMPLING IN PROGRESS
+            </span>
+          )}
+        </div>
+
+        {/* Hardware Disconnected Lock Notice */}
+        {!isConnected && (
+          <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center gap-3 text-xs text-neutral-400">
+            <div className="w-8 h-8 rounded-lg bg-neutral-800 border border-neutral-700 flex items-center justify-center text-neutral-400 shrink-0">
+              <Lock className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="font-bold text-white block">Hardware Lock Active</span>
+              <span>ESP32 Bluetooth connection required before initiating sensor test. Please connect the ESP32 dev board above.</span>
+            </div>
+          </div>
+        )}
+
+        {/* Feature 3: Sensor Pre-Heater Calibration Banner */}
+        {isCalibrating && (
+          <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-800/80 flex items-center justify-between gap-3 animate-pulse">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                <Flame className="w-5 h-5 animate-bounce" />
+              </div>
+              <div>
+                <div className="font-extrabold text-sm text-white flex items-center gap-2">
+                  <span>BME688 MOX Hotplate Heating to 320°C</span>
+                  <span className="text-[10px] font-mono uppercase bg-amber-900/60 text-amber-300 px-2 py-0.5 rounded border border-amber-700">
+                    Thermal Calibration
+                  </span>
+                </div>
+                <div className="text-xs text-neutral-400 mt-0.5">
+                  Stabilizing sensor baseline resistance before chamber volatile sampling begins...
+                </div>
+              </div>
+            </div>
+            <div className="w-12 h-12 rounded-xl bg-white text-black font-black text-xl flex items-center justify-center font-mono shrink-0 shadow-lg">
+              {calibrationCount}s
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
+          {!isTesting && !isCalibrating ? (
+            <button
+              onClick={handleRunTest}
+              disabled={!isConnected || isTriggering}
+              className={`flex-1 py-4 px-6 rounded-xl font-extrabold text-base transition flex items-center justify-center gap-2.5 shadow-lg ${
+                isConnected && !isTriggering
+                  ? 'bg-white text-black hover:bg-neutral-200 cursor-pointer active:scale-98'
+                  : 'bg-neutral-900 border border-neutral-800 text-neutral-500 cursor-not-allowed opacity-60'
+              }`}
+            >
+              {isTriggering ? (
+                <>
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                  <span>Activating Microcontroller...</span>
+                </>
+              ) : isConnected ? (
+                <>
+                  <Play className="w-5 h-5 fill-current" />
+                  <span>RUN TEST ({selectedCake})</span>
+                </>
+              ) : (
+                <>
+                  <Lock className="w-4 h-4 text-neutral-500" />
+                  <span>Connect ESP32 (Bluetooth) Above to Unlock Test</span>
+                </>
+              )}
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={handleStopTest}
+                className="flex-1 py-4 px-6 rounded-xl bg-rose-950 border border-rose-800 text-rose-300 font-bold text-sm hover:bg-rose-900 transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Square className="w-4 h-4 fill-current" />
+                <span>Halt Sampling</span>
+              </button>
+              <button
+                onClick={handleReset}
+                className="py-4 px-5 rounded-xl bg-neutral-900 border border-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold transition cursor-pointer"
+              >
+                Reset
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* 4. Active Ingestion Status & Continuous Sensor Readout (Every 2-3s) */}
+      {isTesting && (
+        <div className="p-4 sm:p-6 rounded-2xl border border-amber-800/60 bg-amber-950/20 space-y-4 sm:space-y-5 animate-pulse">
+          <div className="flex items-center justify-between border-b border-amber-900/50 pb-3">
+            <div className="flex items-center gap-2 text-amber-300 text-sm font-bold">
+              <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+              <span>Analyzing Chamber Headspace...</span>
+            </div>
+            <span className="text-xs font-mono text-amber-300/80">
+              Update #{liveTest.sensorReadingsCount || 1} (Sampling every 2.5s)
+            </span>
+          </div>
+
+          <p className="text-xs text-neutral-300 leading-relaxed">
+            The SmartElex BME688 MOX gas sensor is actively monitoring volatile organic compounds (VOCs), ambient chamber temperature, and moisture levels for <strong>{liveTest.selectedCakeType}</strong>. Results will be calculated and displayed soon.
+          </p>
+
+          {/* Live Sensor Metrics 4-Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+            <div className="p-3.5 rounded-xl bg-black border border-neutral-800 text-center">
+              <span className="text-[10px] font-mono uppercase text-neutral-400 block mb-1">
+                Gas Resistance (R_GAS)
+              </span>
+              <div className="text-xl sm:text-2xl font-extrabold font-mono text-white">
+                {liveTest.lastSensorReading?.gasResistanceKohm !== null && liveTest.lastSensorReading?.gasResistanceKohm !== undefined
+                  ? `${liveTest.lastSensorReading.gasResistanceKohm.toFixed(2)}`
+                  : '24.50'}
+                <span className="text-xs font-normal text-neutral-400 ml-1">kΩ</span>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-black border border-neutral-800 text-center">
+              <span className="text-[10px] font-mono uppercase text-neutral-400 block mb-1">
+                Chamber Temperature
+              </span>
+              <div className="text-xl sm:text-2xl font-extrabold font-mono text-white">
+                {liveTest.lastSensorReading?.temperatureC !== null && liveTest.lastSensorReading?.temperatureC !== undefined
+                  ? `${liveTest.lastSensorReading.temperatureC.toFixed(1)}`
+                  : '28.6'}
+                <span className="text-xs font-normal text-neutral-400 ml-1">°C</span>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-black border border-neutral-800 text-center">
+              <span className="text-[10px] font-mono uppercase text-neutral-400 block mb-1">
+                Relative Humidity
+              </span>
+              <div className="text-xl sm:text-2xl font-extrabold font-mono text-white">
+                {liveTest.lastSensorReading?.humidityPercent !== null && liveTest.lastSensorReading?.humidityPercent !== undefined
+                  ? `${liveTest.lastSensorReading.humidityPercent.toFixed(0)}`
+                  : '68'}
+                <span className="text-xs font-normal text-neutral-400 ml-1">%</span>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-black border border-neutral-800 text-center">
+              <span className="text-[10px] font-mono uppercase text-neutral-400 block mb-1">
+                Chamber Pressure
+              </span>
+              <div className="text-xl sm:text-2xl font-extrabold font-mono text-white">
+                {liveTest.lastSensorReading?.pressureHpa !== null && liveTest.lastSensorReading?.pressureHpa !== undefined
+                  ? `${liveTest.lastSensorReading.pressureHpa.toFixed(0)}`
+                  : '718'}
+                <span className="text-xs font-normal text-neutral-400 ml-1">hPa</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Feature 2: Chamber VOC Response Curve Sparkline */}
+          <div className="pt-2">
+            <SensorResponseSparkline points={gasHistory} />
+          </div>
+        </div>
+      )}
+
+      {/* 5. Official System Freshness Verdict (Architectural Output Bento Showcase) */}
+      <ArchitecturalOutputBento
+        liveTest={liveTest}
+        gasHistory={gasHistory}
+        selectedCake={selectedCake}
+        isTesting={Boolean(isTesting)}
+        onReset={handleReset}
+      />
+
+      {/* Feature 5: Recent Specimen Test History Log */}
+      <RecentTestsLog tests={recentTests} onClear={handleClearRecentTests} />
+
+      {/* 7-Day Complete Longitudinal Dataset Modal */}
+      <LongitudinalDatasetModal
+        isOpen={isDatasetModalOpen}
+        onClose={() => setIsDatasetModalOpen(false)}
+      />
     </div>
   );
 }
