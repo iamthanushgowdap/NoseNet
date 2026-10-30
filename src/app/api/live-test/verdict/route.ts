@@ -4,7 +4,7 @@ import { liveTestStore, FreshnessVerdict } from '@/lib/server/live-test-store';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { verdict, assessorName, score } = body;
+    const { verdict, assessorName, score, testId } = body;
 
     const validVerdicts = ['Fresh', 'Fairly Fresh', 'Stale', 'Spoiled', 'Not Fresh'];
 
@@ -18,7 +18,8 @@ export async function POST(request: Request) {
     const updated = liveTestStore.submitVerdict(
       verdict as FreshnessVerdict,
       assessorName || 'Phone Assessor',
-      typeof score === 'number' ? score : undefined
+      typeof score === 'number' ? score : undefined,
+      testId
     );
     return NextResponse.json({ success: true, state: updated });
   } catch (err: any) {

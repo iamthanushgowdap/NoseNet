@@ -45,6 +45,17 @@ export default function HiddenAssessorPage() {
         const data: LiveTestState = await res.json();
         setLiveTest(data);
 
+        // If a new test has started with a different testId, refresh immediately
+        if (data.isTestRunning && !data.verdict) {
+          if (data.testId && data.testId !== liveTest?.testId) {
+            setSubmittedVerdict(null);
+            setHasVibrated(false);
+            if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+              navigator.vibrate([250, 100, 250]);
+            }
+          }
+        }
+
         // Notify with vibration when a new test run starts
         if (data.isTestRunning && !data.verdict && !hasVibrated) {
           if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -54,11 +65,6 @@ export default function HiddenAssessorPage() {
           setSubmittedVerdict(null);
         } else if (!data.isTestRunning) {
           setHasVibrated(false);
-        }
-
-        // If a new test has started, clear previously submitted verdict
-        if (data.isTestRunning && !data.verdict && submittedVerdict !== null) {
-          setSubmittedVerdict(null);
         }
 
         if (data.verdict) {
@@ -81,14 +87,14 @@ export default function HiddenAssessorPage() {
         if (!msg) return;
 
         if (msg.type === 'NEW_TEST_STARTING' || msg.type === 'TEST_STARTED') {
-          // COMPLETE REFRESH FOR NEW SPECIMEN TEST
+          // COMPLETE REFRESH FOR NEW SPECIMEN TEST WITH SPECIFIC TEST ID
           setSubmittedVerdict(null);
           setHasVibrated(false);
           setLiveTest({
             isTestRunning: true,
             selectedCakeType: msg.cakeType || 'Normal Cake — Unfrozen',
             startedAt: new Date().toISOString(),
-            testId: `TEST-${Date.now().toString().slice(-6)}`,
+            testId: msg.testId || `TEST-${Date.now().toString().slice(-6)}`,
             lastSensorReading: null,
             sensorReadingsCount: 0,
             verdict: null,
@@ -184,6 +190,8 @@ export default function HiddenAssessorPage() {
       navigator.vibrate(100);
     }
 
+    const currentTestId = liveTest?.testId || undefined;
+
     // 1. Broadcast locally for zero-latency multi-tab sync
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
@@ -191,32 +199,21 @@ export default function HiddenAssessorPage() {
         bc.postMessage({
           type: 'VERDICT_SUBMITTED',
           verdict,
+          testId: currentTestId,
           assessorName: 'Remote Assessor',
         });
         bc.close();
       } catch {}
     }
 
-    // 2. Broadcast to cloud relay bridge for cross-device sync
-    try {
-      fetch('https://ntfy.sh/nosenet_iot_live_bridge_v1', {
-        method: 'POST',
-        body: JSON.stringify({
-          isTestRunning: false,
-          verdict,
-          assessorName: 'Remote Assessor',
-          verdictSubmittedAt: new Date().toISOString(),
-        }),
-      }).catch(() => {});
-    } catch {}
-
-    // 3. Post to API
+    // 2. Post to API with exact Test ID
     try {
       const res = await fetch('/api/live-test/verdict', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           verdict,
+          testId: currentTestId,
           assessorName: 'Remote Assessor',
         }),
       });
@@ -380,8 +377,15 @@ export default function HiddenAssessorPage() {
               <Bell className="w-4 h-4 text-amber-400 animate-bounce" />
               <span>Active Test Received from Station!</span>
             </div>
-            <div className="text-base font-extrabold text-white">
-              {liveTest?.selectedCakeType || 'Active Specimen'}
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-base font-extrabold text-white">
+                {liveTest?.selectedCakeType || 'Active Specimen'}
+              </div>
+              {liveTest?.testId && (
+                <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-amber-900/60 text-amber-300 border border-amber-700">
+                  ID: {liveTest.testId}
+                </span>
+              )}
             </div>
             <p className="text-xs text-amber-200/80 leading-relaxed">
               Microcontroller is sampling headspace. Tap a verdict below to finalize test on the main screen:
@@ -392,8 +396,15 @@ export default function HiddenAssessorPage() {
             <span className="text-[10px] font-mono uppercase text-neutral-500 block">
               Target Cake on Main Station:
             </span>
-            <div className="text-sm font-bold text-white">
-              {liveTest?.selectedCakeType || 'Normal Cake — Unfrozen'}
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm font-bold text-white">
+                {liveTest?.selectedCakeType || 'Normal Cake — Unfrozen'}
+              </div>
+              {liveTest?.testId && (
+                <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-neutral-900 text-neutral-400 border border-neutral-800">
+                  {liveTest.testId}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2 pt-1 text-[11px] font-mono text-neutral-400">
               <span className="w-2 h-2 rounded-full bg-neutral-600" />

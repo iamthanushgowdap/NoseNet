@@ -189,7 +189,7 @@ export class ESP32WirelessManager {
   }
 
   // --- 3. TRIGGER MICROCONTROLLER TO RUN SENSOR TEST ---
-  public async sendTriggerRunTest(cakeType: string): Promise<boolean> {
+  public async sendTriggerRunTest(cakeType: string, testId?: string): Promise<boolean> {
     this.isTestActive = true;
     const command = `RUN_TEST:${cakeType}\n`;
 
@@ -221,7 +221,7 @@ export class ESP32WirelessManager {
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
         const bc = new BroadcastChannel('nosenet_live_channel');
-        bc.postMessage({ type: 'TEST_STARTED', cakeType });
+        bc.postMessage({ type: 'TEST_STARTED', cakeType, testId });
         bc.close();
       } catch {}
     }
@@ -231,7 +231,7 @@ export class ESP32WirelessManager {
       await fetch('/api/live-test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'start', cakeType }),
+        body: JSON.stringify({ action: 'start', cakeType, testId }),
       });
       return true;
     } catch (e) {
@@ -310,11 +310,6 @@ export class ESP32WirelessManager {
   }
 
   private parseAndEmitReading(text: string) {
-    // STRICT CLOSURE: If test has been stopped or is inactive, ignore incoming telemetry
-    if (!this.isTestActive) {
-      return;
-    }
-
     try {
       const parsed = JSON.parse(text);
 
@@ -365,16 +360,6 @@ export class ESP32WirelessManager {
           bc.close();
         } catch {}
       }
-
-      // 3. Post to API in background (fire-and-forget)
-      fetch('/api/live-test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'sensor_data',
-          reading,
-        }),
-      }).catch(() => {});
     } catch {
       // Chunk not yet complete JSON or header banner
     }

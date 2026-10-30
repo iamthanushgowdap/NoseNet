@@ -16,7 +16,7 @@ export async function POST(request: Request) {
       if (!cakeType) {
         return NextResponse.json({ error: 'cakeType is required' }, { status: 400 });
       }
-      const updated = liveTestStore.startTest(cakeType);
+      const updated = liveTestStore.startTest(cakeType, body.testId);
       return NextResponse.json(updated);
     }
 

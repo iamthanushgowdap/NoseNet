@@ -78,6 +78,7 @@ export default function MainDashboardPage() {
   // Live Test State
   const [selectedCake, setSelectedCake] = useState<CakeType>('Normal Cake — Unfrozen');
   const [liveTest, setLiveTest] = useState<LiveTestState | null>(null);
+  const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const [isLocalRunning, setIsLocalRunning] = useState<boolean>(false);
   const [isTriggering, setIsTriggering] = useState<boolean>(false);
 
@@ -149,6 +150,11 @@ export default function MainDashboardPage() {
         if (!msg) return;
 
         if (msg.type === 'VERDICT_SUBMITTED') {
+          // If message is tagged with a testId, ensure it matches our activeTestId
+          if (msg.testId && activeTestId && msg.testId !== activeTestId) {
+            return;
+          }
+
           setIsLocalRunning(false);
           // IMMEDIATELY HALT HARDWARE SAMPLING
           esp32Wireless.sendStopTest();
@@ -162,7 +168,7 @@ export default function MainDashboardPage() {
               ...(prev || {
                 selectedCakeType: selectedCake,
                 startedAt: new Date().toISOString(),
-                testId: `TEST-${Date.now().toString().slice(-6)}`,
+                testId: activeTestId || `TEST-${Date.now().toString().slice(-6)}`,
                 lastSensorReading: null,
                 sensorReadingsCount: 1,
               }),
@@ -180,15 +186,16 @@ export default function MainDashboardPage() {
           esp32Wireless.sendStopTest();
           if (msg.type === 'TEST_RESET') {
             setLiveTest(null);
+            setActiveTestId(null);
             setGasHistory([24.2, 24.5]);
           }
         }
       };
       return () => channel.close();
     } catch {}
-  }, [selectedCake]);
+  }, [activeTestId, selectedCake]);
 
-  // Subscribe to Wireless Manager (Direct telemetry ingestion)
+  // Subscribe to Wireless Manager (Direct telemetry ingestion - 100% LOCAL & FAST)
   useEffect(() => {
     const unsub = esp32Wireless.subscribeStatus((status, message, type) => {
       setConnectionStatus(status);
@@ -199,8 +206,9 @@ export default function MainDashboardPage() {
     const unsubSensor = esp32Wireless.subscribeSensorData((reading) => {
       if (!reading) return;
 
-      // STRICT TEST GATE: If test is not running or a verdict was already finalized, drop all packets
-      if (!isLocalRunning || liveTest?.verdict) return;
+      // STRICT TEST GATE: Only ingest into live test when a test is actively running
+      if (!isLocalRunning) return;
+      if (liveTest?.verdict && liveTest.testId === activeTestId) return;
 
       // 1. Direct real-time gas resistance update (Zero lag)
       if (reading.gasResistanceKohm) {
@@ -215,7 +223,7 @@ export default function MainDashboardPage() {
 
       // 2. Direct real-time live test state update
       setLiveTest((prev) => {
-        if (!prev || !prev.isTestRunning || prev.verdict) return prev;
+        if (!prev || !prev.isTestRunning || (prev.verdict && prev.testId === activeTestId)) return prev;
         const count = (prev.sensorReadingsCount || 0) + 1;
         return {
           ...prev,
@@ -229,17 +237,17 @@ export default function MainDashboardPage() {
       unsub();
       unsubSensor();
     };
-  }, [isLocalRunning, liveTest?.verdict, selectedCake]);
+  }, [activeTestId, isLocalRunning, liveTest?.verdict, liveTest?.testId, selectedCake]);
 
-  // Poll live test state from server every 1s
+  // Poll live test state from server every 1s for remote assessor verdict
   const pollLiveState = async () => {
     try {
       const res = await fetch('/api/live-test');
       if (res.ok) {
         const data: LiveTestState = await res.json();
 
-        // 1. If an assessor verdict has been recorded, conclude test and halt sampling immediately
-        if (data.verdict) {
+        // 1. If an assessor verdict has been recorded FOR OUR ACTIVE TEST ID, conclude test!
+        if (data.verdict && activeTestId && data.testId === activeTestId) {
           setIsLocalRunning(false);
           esp32Wireless.sendStopTest();
           setLiveTest(data);
@@ -247,30 +255,15 @@ export default function MainDashboardPage() {
           return;
         }
 
-        // 2. If locally running, NEVER let a cold lambda false state reset the active test
-        if (isLocalRunning && !data.verdict) {
-          setLiveTest((prev) => ({
-            ...(prev || data),
-            isTestRunning: true,
-            selectedCakeType: prev?.selectedCakeType || data.selectedCakeType || selectedCake,
-            lastSensorReading: prev?.lastSensorReading || data.lastSensorReading || null,
-            sensorReadingsCount: Math.max(prev?.sensorReadingsCount || 0, data.sensorReadingsCount || 0),
-          }));
-
-          // Feature 2: Record Gas Resistance curve from poll if not yet updated
-          if (data.lastSensorReading?.gasResistanceKohm) {
-            const val = Number(data.lastSensorReading.gasResistanceKohm);
-            setGasHistory((prev) => {
-              if (prev[prev.length - 1] !== val) {
-                return [...prev.slice(-14), val];
-              }
-              return prev;
-            });
-          }
-        } else if (!isLocalRunning && !liveTest?.verdict) {
-          setLiveTest(data);
-          if (data.isTestRunning) {
-            setIsLocalRunning(true);
+        // 2. If locally running, keep the active test running stably (Ignore older test verdicts)
+        if (isLocalRunning) {
+          // If server reports the test was stopped or updated by remote assessor
+          if (data.verdict && data.testId === activeTestId) {
+            setIsLocalRunning(false);
+            esp32Wireless.sendStopTest();
+            setLiveTest(data);
+            recordRecentTest(data);
+            return;
           }
         }
       }
@@ -286,7 +279,7 @@ export default function MainDashboardPage() {
     pollLiveState();
     const interval = setInterval(pollLiveState, 1000);
     return () => clearInterval(interval);
-  }, [isLocalRunning, liveTest?.verdict, selectedCake]);
+  }, [activeTestId, isLocalRunning, liveTest?.verdict, selectedCake]);
 
   // Handlers for wireless connection
   const handleConnectBluetooth = async () => {
@@ -304,27 +297,29 @@ export default function MainDashboardPage() {
       return;
     }
 
-    // 1. FULL REFRESH: Reset previous test result, graph, and verdict completely
+    // 1. FULL REFRESH: Assign brand new Test ID and reset previous state completely
+    const newTestId = `TEST-${Math.floor(100000 + Math.random() * 900000)}`;
+    setActiveTestId(newTestId);
     setIsLocalRunning(false);
     setIsCalibrating(true);
     setCalibrationCount(5);
     setGasHistory([24.2, 24.5]);
     setLiveTest(null);
 
-    // 2. REFRESH REMOTE ASSESSOR (Multi-tab Broadcast)
+    // 2. REFRESH REMOTE ASSESSOR (Multi-tab Broadcast with new Test ID)
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
         const bc = new BroadcastChannel('nosenet_live_channel');
-        bc.postMessage({ type: 'NEW_TEST_STARTING', cakeType: selectedCake });
+        bc.postMessage({ type: 'NEW_TEST_STARTING', cakeType: selectedCake, testId: newTestId });
         bc.close();
       } catch {}
     }
 
-    // 3. RESET SERVER STORE SO PREVIOUS VERDICT IS WIPED OUT
+    // 3. INITIALIZE SERVER STORE WITH NEW TEST ID
     fetch('/api/live-test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'reset' }),
+      body: JSON.stringify({ action: 'start', cakeType: selectedCake, testId: newTestId }),
     }).catch(() => {});
 
     let remaining = 5;
@@ -339,7 +334,6 @@ export default function MainDashboardPage() {
         setIsTriggering(true);
         setIsLocalRunning(true);
 
-        const newTestId = `TEST-${Date.now().toString().slice(-6)}`;
         setLiveTest({
           isTestRunning: true,
           selectedCakeType: selectedCake,
@@ -354,8 +348,7 @@ export default function MainDashboardPage() {
         });
 
         try {
-          await esp32Wireless.sendTriggerRunTest(selectedCake);
-          await pollLiveState();
+          await esp32Wireless.sendTriggerRunTest(selectedCake, newTestId);
         } catch (e) {
           console.error(e);
         } finally {
@@ -369,9 +362,9 @@ export default function MainDashboardPage() {
     setIsCalibrating(false);
     setCalibrationCount(null);
     setIsLocalRunning(false);
+    setActiveTestId(null);
     try {
       await esp32Wireless.sendStopTest();
-      await pollLiveState();
     } catch (e) {
       console.error(e);
     }
@@ -386,6 +379,7 @@ export default function MainDashboardPage() {
 
   const handleReset = async () => {
     setIsLocalRunning(false);
+    setActiveTestId(null);
     setLiveTest(null);
     setGasHistory([24.2, 24.5]);
     try {
@@ -402,7 +396,6 @@ export default function MainDashboardPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'reset' }),
       });
-      await pollLiveState();
     } catch (e) {
       console.error(e);
     }
@@ -650,9 +643,16 @@ export default function MainDashboardPage() {
               <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
               <span>Analyzing Chamber Headspace...</span>
             </div>
-            <span className="text-xs font-mono text-amber-300/80">
-              Update #{liveTest?.sensorReadingsCount || 1} (Sampling every 2.5s)
-            </span>
+            <div className="flex items-center gap-2">
+              {activeTestId && (
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 font-bold">
+                  {activeTestId}
+                </span>
+              )}
+              <span className="text-xs font-mono text-amber-300/80">
+                Update #{liveTest?.sensorReadingsCount || 1}
+              </span>
+            </div>
           </div>
 
           <p className="text-xs text-neutral-300 leading-relaxed">
