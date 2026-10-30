@@ -3,16 +3,6 @@ import { liveTestStore, FreshnessVerdict } from '@/lib/server/live-test-store';
 
 export async function POST(request: Request) {
   try {
-    const currentState = liveTestStore.getState();
-
-    // STRICT HARDWARE LOCK: Reject verdict if test is not actively running
-    if (!currentState.isTestRunning) {
-      return NextResponse.json(
-        { error: 'Hardware Locked: Cannot submit verdict when test is not running on station' },
-        { status: 400 }
-      );
-    }
-
     const body = await request.json();
     const { verdict, assessorName, score } = body;
 

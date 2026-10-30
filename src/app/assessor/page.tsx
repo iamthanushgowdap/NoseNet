@@ -51,6 +51,7 @@ export default function HiddenAssessorPage() {
             navigator.vibrate([250, 100, 250]);
           }
           setHasVibrated(true);
+          setSubmittedVerdict(null);
         } else if (!data.isTestRunning) {
           setHasVibrated(false);
         }
@@ -63,6 +64,52 @@ export default function HiddenAssessorPage() {
       // silent
     }
   };
+
+  // Zero-latency cross-tab synchronization
+  useEffect(() => {
+    if (!isUnlocked) return;
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
+    try {
+      const channel = new BroadcastChannel('nosenet_live_channel');
+      channel.onmessage = (event) => {
+        const msg = event.data;
+        if (!msg) return;
+
+        if (msg.type === 'TEST_STARTED') {
+          setSubmittedVerdict(null);
+          setLiveTest({
+            isTestRunning: true,
+            selectedCakeType: msg.cakeType || 'Normal Cake — Unfrozen',
+            startedAt: new Date().toISOString(),
+            testId: `TEST-${Date.now().toString().slice(-6)}`,
+            lastSensorReading: null,
+            sensorReadingsCount: 0,
+            verdict: null,
+            freshnessScore: null,
+            verdictSubmittedAt: null,
+            assessorName: null,
+          });
+          if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+            navigator.vibrate([250, 100, 250]);
+          }
+        } else if (msg.type === 'SENSOR_READING') {
+          setLiveTest((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  isTestRunning: true,
+                  lastSensorReading: msg.reading,
+                  sensorReadingsCount: prev.sensorReadingsCount + 1,
+                }
+              : null
+          );
+        } else if (msg.type === 'TEST_STOPPED' || msg.type === 'TEST_RESET') {
+          setLiveTest((prev) => (prev ? { ...prev, isTestRunning: false } : null));
+        }
+      };
+      return () => channel.close();
+    } catch {}
+  }, [isUnlocked]);
 
   useEffect(() => {
     if (!isUnlocked) return;
@@ -120,27 +167,51 @@ export default function HiddenAssessorPage() {
 
   // Submit verdict to main dashboard
   const handleSelectVerdict = async (verdict: FreshnessVerdict) => {
-    // STRICT HARDWARE LOCK: Only submit verdict when a test is actively running
-    if (!liveTest?.isTestRunning) {
-      return;
+    setIsSubmitting(true);
+    setSubmittedVerdict(verdict);
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      navigator.vibrate(100);
     }
 
-    setIsSubmitting(true);
+    // 1. Broadcast locally for zero-latency multi-tab sync
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        const bc = new BroadcastChannel('nosenet_live_channel');
+        bc.postMessage({
+          type: 'VERDICT_SUBMITTED',
+          verdict,
+          assessorName: 'Remote Assessor',
+        });
+        bc.close();
+      } catch {}
+    }
+
+    // 2. Broadcast to cloud relay bridge for cross-device sync
+    try {
+      fetch('https://ntfy.sh/nosenet_iot_live_bridge_v1', {
+        method: 'POST',
+        body: JSON.stringify({
+          isTestRunning: false,
+          verdict,
+          assessorName: 'Remote Assessor',
+          verdictSubmittedAt: new Date().toISOString(),
+        }),
+      }).catch(() => {});
+    } catch {}
+
+    // 3. Post to API
     try {
       const res = await fetch('/api/live-test/verdict', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           verdict,
-          assessorName: 'IoT Evaluator',
+          assessorName: 'Remote Assessor',
         }),
       });
 
       if (res.ok) {
         setSubmittedVerdict(verdict);
-        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-          navigator.vibrate(100);
-        }
       }
     } catch (e) {
       console.error('Failed to submit verdict:', e);
@@ -299,7 +370,7 @@ export default function HiddenAssessorPage() {
               <span>Active Test Received from Station!</span>
             </div>
             <div className="text-base font-extrabold text-white">
-              {liveTest.selectedCakeType}
+              {liveTest?.selectedCakeType || 'Active Specimen'}
             </div>
             <p className="text-xs text-amber-200/80 leading-relaxed">
               Microcontroller is sampling headspace. Tap a verdict below to finalize test on the main screen:
@@ -326,20 +397,20 @@ export default function HiddenAssessorPage() {
         {/* Option 1: Fresh */}
         <button
           onClick={() => handleSelectVerdict('Fresh')}
-          disabled={isSubmitting || !isTesting}
-          className={`w-full p-4 rounded-2xl border text-left transition flex items-center justify-between ${
-            !isTesting
-              ? 'border-neutral-900 bg-neutral-950/40 opacity-40 cursor-not-allowed text-neutral-500'
-              : submittedVerdict === 'Fresh'
-              ? 'border-emerald-500 bg-emerald-950/50 text-emerald-300 shadow-xl ring-2 ring-emerald-500/60 cursor-pointer'
-              : 'border-neutral-800 bg-neutral-950 hover:border-emerald-800 text-white active:scale-98 cursor-pointer'
+          disabled={isSubmitting}
+          className={`w-full p-4 rounded-2xl border text-left transition flex items-center justify-between active:scale-98 cursor-pointer ${
+            submittedVerdict === 'Fresh'
+              ? 'border-emerald-500 bg-emerald-950/60 text-emerald-300 shadow-xl ring-2 ring-emerald-500/70'
+              : isTesting
+              ? 'border-neutral-800 bg-neutral-950 hover:border-emerald-700 text-white hover:bg-emerald-950/10'
+              : 'border-neutral-800/90 bg-neutral-950/90 hover:border-neutral-700 text-neutral-200'
           }`}
         >
           <div>
-            <div className={`font-extrabold text-base flex items-center gap-2 ${isTesting ? 'text-emerald-400' : 'text-neutral-500'}`}>
-              <span className={`w-3 h-3 rounded-full ${isTesting ? 'bg-emerald-500' : 'bg-neutral-600'}`} />
+            <div className="font-extrabold text-base flex items-center gap-2 text-emerald-400">
+              <span className={`w-3 h-3 rounded-full bg-emerald-500 ${isTesting ? 'animate-pulse' : ''}`} />
               <span>Fresh (Grade A)</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/40 text-emerald-300 border border-emerald-800/60">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/60">
                 ~95%
               </span>
             </div>
@@ -355,20 +426,20 @@ export default function HiddenAssessorPage() {
         {/* Option 2: Fairly Fresh */}
         <button
           onClick={() => handleSelectVerdict('Fairly Fresh')}
-          disabled={isSubmitting || !isTesting}
-          className={`w-full p-4 rounded-2xl border text-left transition flex items-center justify-between ${
-            !isTesting
-              ? 'border-neutral-900 bg-neutral-950/40 opacity-40 cursor-not-allowed text-neutral-500'
-              : submittedVerdict === 'Fairly Fresh'
-              ? 'border-amber-500 bg-amber-950/50 text-amber-300 shadow-xl ring-2 ring-amber-500/60 cursor-pointer'
-              : 'border-neutral-800 bg-neutral-950 hover:border-amber-800 text-white active:scale-98 cursor-pointer'
+          disabled={isSubmitting}
+          className={`w-full p-4 rounded-2xl border text-left transition flex items-center justify-between active:scale-98 cursor-pointer ${
+            submittedVerdict === 'Fairly Fresh'
+              ? 'border-amber-500 bg-amber-950/60 text-amber-300 shadow-xl ring-2 ring-amber-500/70'
+              : isTesting
+              ? 'border-neutral-800 bg-neutral-950 hover:border-amber-700 text-white hover:bg-amber-950/10'
+              : 'border-neutral-800/90 bg-neutral-950/90 hover:border-neutral-700 text-neutral-200'
           }`}
         >
           <div>
-            <div className={`font-extrabold text-base flex items-center gap-2 ${isTesting ? 'text-amber-400' : 'text-neutral-500'}`}>
-              <span className={`w-3 h-3 rounded-full ${isTesting ? 'bg-amber-500' : 'bg-neutral-600'}`} />
+            <div className="font-extrabold text-base flex items-center gap-2 text-amber-400">
+              <span className={`w-3 h-3 rounded-full bg-amber-500 ${isTesting ? 'animate-pulse' : ''}`} />
               <span>Fairly Fresh (Good)</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950/40 text-amber-300 border border-amber-800/60">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-800/60">
                 ~75%
               </span>
             </div>
@@ -384,20 +455,20 @@ export default function HiddenAssessorPage() {
         {/* Option 3: Stale */}
         <button
           onClick={() => handleSelectVerdict('Stale')}
-          disabled={isSubmitting || !isTesting}
-          className={`w-full p-4 rounded-2xl border text-left transition flex items-center justify-between ${
-            !isTesting
-              ? 'border-neutral-900 bg-neutral-950/40 opacity-40 cursor-not-allowed text-neutral-500'
-              : submittedVerdict === 'Stale'
-              ? 'border-orange-500 bg-orange-950/50 text-orange-300 shadow-xl ring-2 ring-orange-500/60 cursor-pointer'
-              : 'border-neutral-800 bg-neutral-950 hover:border-orange-800 text-white active:scale-98 cursor-pointer'
+          disabled={isSubmitting}
+          className={`w-full p-4 rounded-2xl border text-left transition flex items-center justify-between active:scale-98 cursor-pointer ${
+            submittedVerdict === 'Stale'
+              ? 'border-orange-500 bg-orange-950/60 text-orange-300 shadow-xl ring-2 ring-orange-500/70'
+              : isTesting
+              ? 'border-neutral-800 bg-neutral-950 hover:border-orange-700 text-white hover:bg-orange-950/10'
+              : 'border-neutral-800/90 bg-neutral-950/90 hover:border-neutral-700 text-neutral-200'
           }`}
         >
           <div>
-            <div className={`font-extrabold text-base flex items-center gap-2 ${isTesting ? 'text-orange-400' : 'text-neutral-500'}`}>
-              <span className={`w-3 h-3 rounded-full ${isTesting ? 'bg-orange-500' : 'bg-neutral-600'}`} />
+            <div className="font-extrabold text-base flex items-center gap-2 text-orange-400">
+              <span className={`w-3 h-3 rounded-full bg-orange-500 ${isTesting ? 'animate-pulse' : ''}`} />
               <span>Stale / Day-Old</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-orange-950/40 text-orange-300 border border-orange-800/60">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-orange-950/60 text-orange-300 border border-orange-800/60">
                 ~52%
               </span>
             </div>
@@ -413,20 +484,20 @@ export default function HiddenAssessorPage() {
         {/* Option 4: Spoiled */}
         <button
           onClick={() => handleSelectVerdict('Spoiled')}
-          disabled={isSubmitting || !isTesting}
-          className={`w-full p-4 rounded-2xl border text-left transition flex items-center justify-between ${
-            !isTesting
-              ? 'border-neutral-900 bg-neutral-950/40 opacity-40 cursor-not-allowed text-neutral-500'
-              : submittedVerdict === 'Spoiled' || submittedVerdict === 'Not Fresh'
-              ? 'border-rose-500 bg-rose-950/50 text-rose-300 shadow-xl ring-2 ring-rose-500/60 cursor-pointer'
-              : 'border-neutral-800 bg-neutral-950 hover:border-rose-800 text-white active:scale-98 cursor-pointer'
+          disabled={isSubmitting}
+          className={`w-full p-4 rounded-2xl border text-left transition flex items-center justify-between active:scale-98 cursor-pointer ${
+            submittedVerdict === 'Spoiled' || submittedVerdict === 'Not Fresh'
+              ? 'border-rose-500 bg-rose-950/60 text-rose-300 shadow-xl ring-2 ring-rose-500/70'
+              : isTesting
+              ? 'border-neutral-800 bg-neutral-950 hover:border-rose-700 text-white hover:bg-rose-950/10'
+              : 'border-neutral-800/90 bg-neutral-950/90 hover:border-neutral-700 text-neutral-200'
           }`}
         >
           <div>
-            <div className={`font-extrabold text-base flex items-center gap-2 ${isTesting ? 'text-rose-400' : 'text-neutral-500'}`}>
-              <span className={`w-3 h-3 rounded-full ${isTesting ? 'bg-rose-500' : 'bg-neutral-600'}`} />
+            <div className="font-extrabold text-base flex items-center gap-2 text-rose-400">
+              <span className={`w-3 h-3 rounded-full bg-rose-500 ${isTesting ? 'animate-pulse' : ''}`} />
               <span>Spoiled / Expired</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-950/40 text-rose-300 border border-rose-800/60">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-950/60 text-rose-300 border border-rose-800/60">
                 ~18%
               </span>
             </div>
@@ -442,26 +513,24 @@ export default function HiddenAssessorPage() {
 
       {/* Confirmation & Status Box */}
       <div className="space-y-3 pt-3 border-t border-neutral-900 pb-2">
-        {isTesting ? (
-          submittedVerdict ? (
-            <div className="p-4 rounded-xl border border-emerald-900 bg-emerald-950/30 text-center space-y-1">
-              <div className="font-bold text-emerald-400 text-xs flex items-center justify-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Verdict Transmitted to Main Station!</span>
-              </div>
-              <p className="text-[11px] text-neutral-300 font-mono">
-                Main screen updated with: <strong className="text-white">{submittedVerdict}</strong>
-              </p>
+        {submittedVerdict ? (
+          <div className="p-4 rounded-xl border border-emerald-900 bg-emerald-950/30 text-center space-y-1">
+            <div className="font-bold text-emerald-400 text-xs flex items-center justify-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Verdict Transmitted to Main Station!</span>
             </div>
-          ) : (
-            <div className="text-center text-xs text-amber-300 font-mono animate-pulse">
-              ● Active Sampling in Progress — Tap a verdict above
-            </div>
-          )
+            <p className="text-[11px] text-neutral-300 font-mono">
+              Main screen updated with: <strong className="text-white">{submittedVerdict}</strong>
+            </p>
+          </div>
+        ) : isTesting ? (
+          <div className="text-center text-xs text-amber-300 font-mono animate-pulse">
+            ● Active Sampling in Progress — Tap any grade to record verdict
+          </div>
         ) : (
-          <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-800 text-center text-xs text-neutral-500 font-mono flex items-center justify-center gap-2">
-            <Lock className="w-3.5 h-3.5" />
-            <span>Station Idle • Start test on laptop with connected ESP32 first</span>
+          <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 text-center text-xs text-neutral-400 font-mono flex items-center justify-center gap-2">
+            <Smartphone className="w-3.5 h-3.5 text-neutral-400" />
+            <span>Assessor Ready • Tap any grade to record verdict</span>
           </div>
         )}
       </div>

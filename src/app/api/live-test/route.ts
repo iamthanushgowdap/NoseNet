@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { liveTestStore, CakeType } from '@/lib/server/live-test-store';
 
 export async function GET() {
-  const state = liveTestStore.getState();
+  const state = await liveTestStore.getSyncedState();
   return NextResponse.json(state);
 }
 

@@ -1,4 +1,4 @@
-// In-memory + file-backed live test store for instant cross-device synchronization
+// In-memory + cloud-bridged live test store for instant cross-device and cross-lambda synchronization
 export type CakeType =
   | 'Normal Cake — Frozen'
   | 'Normal Cake — Unfrozen'
@@ -34,6 +34,49 @@ declare global {
   var __liveTestStoreInstance: LiveTestStore | undefined;
 }
 
+const CLOUD_BRIDGE_TOPIC = 'https://ntfy.sh/nosenet_iot_live_bridge_v1';
+
+async function pushStateToCloudBridge(state: LiveTestState): Promise<void> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1200);
+    await fetch(CLOUD_BRIDGE_TOPIC, {
+      method: 'POST',
+      body: JSON.stringify(state),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+  } catch {
+    // Non-blocking fallback
+  }
+}
+
+async function fetchStateFromCloudBridge(): Promise<Partial<LiveTestState> | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1500);
+    const res = await fetch(`${CLOUD_BRIDGE_TOPIC}/json?poll=1&since=3m`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const text = await res.text();
+    const lines = text.trim().split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const item = JSON.parse(lines[i]);
+        if (item.message) {
+          const parsed = JSON.parse(item.message);
+          if (parsed && typeof parsed === 'object') {
+            return parsed;
+          }
+        }
+      } catch {}
+    }
+  } catch {}
+  return null;
+}
+
 class LiveTestStore {
   private state: LiveTestState = {
     isTestRunning: false,
@@ -48,6 +91,8 @@ class LiveTestStore {
     assessorName: null,
   };
 
+  private lastCloudSyncTime = 0;
+
   public static getInstance(): LiveTestStore {
     if (!globalThis.__liveTestStoreInstance) {
       globalThis.__liveTestStoreInstance = new LiveTestStore();
@@ -57,6 +102,42 @@ class LiveTestStore {
 
   public getState(): LiveTestState {
     return { ...this.state };
+  }
+
+  public async getSyncedState(): Promise<LiveTestState> {
+    const now = Date.now();
+    // If local state is idle or if 1.5s passed since last cloud query, check cloud bridge
+    if (!this.state.isTestRunning && now - this.lastCloudSyncTime > 1500) {
+      this.lastCloudSyncTime = now;
+      const cloudState = await fetchStateFromCloudBridge();
+      if (cloudState) {
+        if (cloudState.isTestRunning !== undefined) {
+          this.state.isTestRunning = cloudState.isTestRunning;
+        }
+        if (cloudState.selectedCakeType) {
+          this.state.selectedCakeType = cloudState.selectedCakeType as CakeType;
+        }
+        if (cloudState.testId) {
+          this.state.testId = cloudState.testId;
+        }
+        if (cloudState.startedAt) {
+          this.state.startedAt = cloudState.startedAt;
+        }
+        if (cloudState.lastSensorReading) {
+          this.state.lastSensorReading = cloudState.lastSensorReading as LiveSensorSnapshot;
+        }
+        if (cloudState.sensorReadingsCount !== undefined) {
+          this.state.sensorReadingsCount = cloudState.sensorReadingsCount;
+        }
+        if (cloudState.verdict) {
+          this.state.verdict = cloudState.verdict as FreshnessVerdict;
+          this.state.freshnessScore = cloudState.freshnessScore ?? null;
+          this.state.verdictSubmittedAt = cloudState.verdictSubmittedAt ?? null;
+          this.state.assessorName = cloudState.assessorName ?? null;
+        }
+      }
+    }
+    return this.getState();
   }
 
   public startTest(cakeType: CakeType): LiveTestState {
@@ -73,11 +154,13 @@ class LiveTestStore {
       verdictSubmittedAt: null,
       assessorName: null,
     };
+    pushStateToCloudBridge(this.state);
     return this.getState();
   }
 
   public stopTest(): LiveTestState {
     this.state.isTestRunning = false;
+    pushStateToCloudBridge(this.state);
     return this.getState();
   }
 
@@ -94,6 +177,7 @@ class LiveTestStore {
       verdictSubmittedAt: null,
       assessorName: null,
     };
+    pushStateToCloudBridge(this.state);
     return this.getState();
   }
 
@@ -109,6 +193,12 @@ class LiveTestStore {
     };
     this.state.lastSensorReading = fullReading;
     this.state.sensorReadingsCount++;
+
+    // Periodically sync sensor snapshot to cloud
+    if (this.state.sensorReadingsCount % 2 === 0) {
+      pushStateToCloudBridge(this.state);
+    }
+
     return this.getState();
   }
 
@@ -140,6 +230,7 @@ class LiveTestStore {
       }
     }
 
+    pushStateToCloudBridge(this.state);
     return this.getState();
   }
 }

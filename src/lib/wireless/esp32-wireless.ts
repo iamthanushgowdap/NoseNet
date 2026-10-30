@@ -1,4 +1,5 @@
 // Wireless ESP32 Connection Service: Web Bluetooth (BLE) & Wi-Fi IP Bridge
+import { LiveSensorSnapshot } from '@/lib/server/live-test-store';
 
 export type WirelessConnectionType = 'bluetooth' | 'wifi' | 'none';
 export type WirelessConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
@@ -8,7 +9,7 @@ export interface WirelessStatusListener {
 }
 
 export interface WirelessSensorDataListener {
-  (reading: any): void;
+  (reading: LiveSensorSnapshot): void;
 }
 
 // Standard BLE UART Service UUIDs (Nordic UART Service or Custom ESP32 Service)
@@ -31,6 +32,9 @@ export class ESP32WirelessManager {
 
   // Wi-Fi variables
   private esp32WifiIp: string = '';
+
+  // Incoming chunk stream buffer
+  private incomingBuffer = '';
 
   // Listeners
   private statusListeners = new Set<WirelessStatusListener>();
@@ -114,7 +118,7 @@ export class ESP32WirelessManager {
         const value = event.target.value;
         const decoder = new TextDecoder('utf-8');
         const text = decoder.decode(value);
-        this.handleIncomingData(text);
+        this.handleIncomingRaw(text);
       });
 
       this.setStatus('connected', `Connected wirelessly via Bluetooth to ${this.bleDevice.name || 'ESP32'}`, 'bluetooth');
@@ -204,7 +208,16 @@ export class ESP32WirelessManager {
       }
     }
 
-    // 3. Update our local server state
+    // 3. Local cross-tab broadcast via BroadcastChannel
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        const bc = new BroadcastChannel('nosenet_live_channel');
+        bc.postMessage({ type: 'TEST_STARTED', cakeType });
+        bc.close();
+      } catch {}
+    }
+
+    // 4. Update server state
     try {
       await fetch('/api/live-test', {
         method: 'POST',
@@ -229,6 +242,14 @@ export class ESP32WirelessManager {
       }
     }
 
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        const bc = new BroadcastChannel('nosenet_live_channel');
+        bc.postMessage({ type: 'TEST_STOPPED' });
+        bc.close();
+      } catch {}
+    }
+
     try {
       await fetch('/api/live-test', {
         method: 'POST',
@@ -242,10 +263,27 @@ export class ESP32WirelessManager {
     }
   }
 
-  private handleIncomingData(rawText: string) {
+  private handleIncomingRaw(rawText: string) {
+    this.incomingBuffer += rawText;
+    const lines = this.incomingBuffer.split('\n');
+    this.incomingBuffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      this.parseAndEmitReading(trimmed);
+    }
+
+    // If buffer ends with complete JSON object bracket
+    if (this.incomingBuffer.startsWith('{') && this.incomingBuffer.endsWith('}')) {
+      this.parseAndEmitReading(this.incomingBuffer);
+      this.incomingBuffer = '';
+    }
+  }
+
+  private parseAndEmitReading(text: string) {
     try {
-      const parsed = JSON.parse(rawText.trim());
-      this.sensorDataListeners.forEach((l) => l(parsed));
+      const parsed = JSON.parse(text);
 
       // Resolve Gas Resistance accurately
       let gasKohm: number | null = null;
@@ -273,24 +311,39 @@ export class ESP32WirelessManager {
       const hum = parsed.humidity_percent ?? parsed.humidity ?? parsed.hum ?? null;
       const pres = parsed.pressure_hPa ?? parsed.pressure ?? parsed.pres ?? null;
 
-      // Sync to local live-test API
+      const reading: LiveSensorSnapshot = {
+        gasResistanceKohm: gasKohm !== null ? Number(gasKohm.toFixed(2)) : null,
+        gasResistanceOhm: gasOhm,
+        temperatureC: temp !== null ? Number(Number(temp).toFixed(1)) : null,
+        humidityPercent: hum !== null ? Number(Number(hum).toFixed(0)) : null,
+        pressureHpa: pres !== null ? Number(Number(pres).toFixed(0)) : null,
+        sensorStatus: parsed.status || 'OK',
+        timestamp: new Date().toISOString(),
+      };
+
+      // 1. Instantly notify local UI subscribers (Zero latency!)
+      this.sensorDataListeners.forEach((l) => l(reading));
+
+      // 2. Broadcast locally across tabs/windows
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        try {
+          const bc = new BroadcastChannel('nosenet_live_channel');
+          bc.postMessage({ type: 'SENSOR_READING', reading });
+          bc.close();
+        } catch {}
+      }
+
+      // 3. Post to API in background (fire-and-forget)
       fetch('/api/live-test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'sensor_data',
-          reading: {
-            gasResistanceKohm: gasKohm,
-            gasResistanceOhm: gasOhm,
-            temperatureC: temp !== null ? Number(temp) : null,
-            humidityPercent: hum !== null ? Number(hum) : null,
-            pressureHpa: pres !== null ? Number(pres) : null,
-            sensorStatus: parsed.status || 'OK',
-          },
+          reading,
         }),
       }).catch(() => {});
     } catch {
-      // Not JSON or partial chunk
+      // Chunk not yet complete JSON or header banner
     }
   }
 }

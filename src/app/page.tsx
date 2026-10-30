@@ -78,6 +78,7 @@ export default function MainDashboardPage() {
   // Live Test State
   const [selectedCake, setSelectedCake] = useState<CakeType>('Normal Cake — Unfrozen');
   const [liveTest, setLiveTest] = useState<LiveTestState | null>(null);
+  const [isLocalRunning, setIsLocalRunning] = useState<boolean>(false);
   const [isTriggering, setIsTriggering] = useState<boolean>(false);
 
   // Feature 3: Sensor Pre-Heater Calibration State (5s Countdown)
@@ -90,6 +91,39 @@ export default function MainDashboardPage() {
   // Feature 5: Recent Tests Log
   const [recentTests, setRecentTests] = useState<RecentTestItem[]>([]);
   const [isDatasetModalOpen, setIsDatasetModalOpen] = useState<boolean>(false);
+
+  // Helper to record finalized test to recent list
+  const recordRecentTest = (data: LiveTestState) => {
+    if (!data.verdict || !data.testId) return;
+    const finalVerdict: FreshnessVerdict = data.verdict;
+    const currentTestId: string = data.testId;
+    const currentCake = data.selectedCakeType || selectedCake;
+    const finalGas = data.lastSensorReading?.gasResistanceKohm || 24.5;
+    const finalTemp = data.lastSensorReading?.temperatureC || 28.6;
+    const finalHum = data.lastSensorReading?.humidityPercent || 68;
+    const finalScore = data.freshnessScore || (
+      finalVerdict === 'Fresh' ? 94.6 : finalVerdict === 'Fairly Fresh' ? 74.2 : finalVerdict === 'Stale' ? 52.8 : 18.4
+    );
+
+    setRecentTests((prev) => {
+      if (prev.some((t) => t.id === currentTestId)) return prev;
+      const newItem: RecentTestItem = {
+        id: currentTestId,
+        cakeType: currentCake,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        gasKohm: finalGas,
+        tempC: finalTemp,
+        humidity: finalHum,
+        verdict: finalVerdict,
+        score: finalScore,
+      };
+      const updated = [newItem, ...prev].slice(0, 5);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('nosenet_recent_tests', JSON.stringify(updated));
+      }
+      return updated;
+    });
+  };
 
   // Load recent tests from localStorage on mount
   useEffect(() => {
@@ -105,7 +139,51 @@ export default function MainDashboardPage() {
     }
   }, []);
 
-  // Subscribe to Wireless Manager
+  // Listen to local BroadcastChannel for zero-latency multi-tab sync
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
+    try {
+      const channel = new BroadcastChannel('nosenet_live_channel');
+      channel.onmessage = (event) => {
+        const msg = event.data;
+        if (!msg) return;
+
+        if (msg.type === 'VERDICT_SUBMITTED') {
+          setIsLocalRunning(false);
+          const finalVerdict = msg.verdict;
+          const score = msg.score || (
+            finalVerdict === 'Fresh' ? 94.6 : finalVerdict === 'Fairly Fresh' ? 74.2 : finalVerdict === 'Stale' ? 52.8 : 18.4
+          );
+          setLiveTest((prev) => {
+            const updated: LiveTestState = {
+              ...(prev || {
+                selectedCakeType: selectedCake,
+                startedAt: new Date().toISOString(),
+                testId: `TEST-${Date.now().toString().slice(-6)}`,
+                lastSensorReading: null,
+                sensorReadingsCount: 1,
+              }),
+              isTestRunning: false,
+              verdict: finalVerdict,
+              freshnessScore: score,
+              verdictSubmittedAt: new Date().toISOString(),
+              assessorName: msg.assessorName || 'Remote Assessor',
+            };
+            recordRecentTest(updated);
+            return updated;
+          });
+        } else if (msg.type === 'TEST_STOPPED' || msg.type === 'TEST_RESET') {
+          setIsLocalRunning(false);
+          if (msg.type === 'TEST_RESET') {
+            setLiveTest(null);
+          }
+        }
+      };
+      return () => channel.close();
+    } catch {}
+  }, [selectedCake]);
+
+  // Subscribe to Wireless Manager (Direct telemetry ingestion)
   useEffect(() => {
     const unsub = esp32Wireless.subscribeStatus((status, message, type) => {
       setConnectionStatus(status);
@@ -113,15 +191,46 @@ export default function MainDashboardPage() {
       setConnectionType(type || 'none');
     });
 
-    const unsubSensor = esp32Wireless.subscribeSensorData(() => {
-      pollLiveState();
+    const unsubSensor = esp32Wireless.subscribeSensorData((reading) => {
+      if (!reading) return;
+
+      // 1. Direct real-time gas resistance update (Zero lag)
+      if (reading.gasResistanceKohm) {
+        const val = Number(reading.gasResistanceKohm);
+        setGasHistory((prev) => {
+          if (prev[prev.length - 1] !== val) {
+            return [...prev.slice(-14), val];
+          }
+          return prev;
+        });
+      }
+
+      // 2. Direct real-time live test state update
+      setLiveTest((prev) => {
+        const count = (prev?.sensorReadingsCount || 0) + 1;
+        return {
+          ...(prev || {
+            isTestRunning: true,
+            selectedCakeType: selectedCake,
+            startedAt: new Date().toISOString(),
+            testId: `TEST-${Date.now().toString().slice(-6)}`,
+            verdict: null,
+            freshnessScore: null,
+            verdictSubmittedAt: null,
+            assessorName: null,
+          }),
+          isTestRunning: true,
+          lastSensorReading: reading,
+          sensorReadingsCount: count,
+        };
+      });
     });
 
     return () => {
       unsub();
       unsubSensor();
     };
-  }, []);
+  }, [selectedCake]);
 
   // Poll live test state from server every 1s
   const pollLiveState = async () => {
@@ -129,9 +238,32 @@ export default function MainDashboardPage() {
       const res = await fetch('/api/live-test');
       if (res.ok) {
         const data: LiveTestState = await res.json();
-        setLiveTest(data);
 
-        // Feature 2: Record Gas Resistance curve
+        // 1. If an assessor verdict has been recorded, conclude test stably
+        if (data.verdict && data.testId) {
+          setIsLocalRunning(false);
+          setLiveTest(data);
+          recordRecentTest(data);
+          return;
+        }
+
+        // 2. If locally running, NEVER let a cold lambda false state reset the active test
+        if (isLocalRunning) {
+          setLiveTest((prev) => ({
+            ...(prev || data),
+            isTestRunning: true,
+            selectedCakeType: prev?.selectedCakeType || data.selectedCakeType || selectedCake,
+            lastSensorReading: prev?.lastSensorReading || data.lastSensorReading || null,
+            sensorReadingsCount: Math.max(prev?.sensorReadingsCount || 0, data.sensorReadingsCount || 0),
+          }));
+        } else {
+          setLiveTest(data);
+          if (data.isTestRunning) {
+            setIsLocalRunning(true);
+          }
+        }
+
+        // Feature 2: Record Gas Resistance curve from poll if not yet updated
         if (data.lastSensorReading?.gasResistanceKohm) {
           const val = Number(data.lastSensorReading.gasResistanceKohm);
           setGasHistory((prev) => {
@@ -139,38 +271,6 @@ export default function MainDashboardPage() {
               return [...prev.slice(-14), val];
             }
             return prev;
-          });
-        }
-
-        // Feature 5: Automatically save finalized test to Recent Tests
-        if (data.verdict && data.testId) {
-          const finalVerdict: FreshnessVerdict = data.verdict;
-          const currentTestId: string = data.testId;
-          const currentCake = data.selectedCakeType || selectedCake;
-          const finalGas = data.lastSensorReading?.gasResistanceKohm || 24.5;
-          const finalTemp = data.lastSensorReading?.temperatureC || 28.6;
-          const finalHum = data.lastSensorReading?.humidityPercent || 68;
-          const finalScore = data.freshnessScore || (
-            finalVerdict === 'Fresh' ? 94.6 : finalVerdict === 'Fairly Fresh' ? 74.2 : finalVerdict === 'Stale' ? 52.8 : 18.4
-          );
-
-          setRecentTests((prev) => {
-            if (prev.some((t) => t.id === currentTestId)) return prev;
-            const newItem: RecentTestItem = {
-              id: currentTestId,
-              cakeType: currentCake,
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-              gasKohm: finalGas,
-              tempC: finalTemp,
-              humidity: finalHum,
-              verdict: finalVerdict,
-              score: finalScore,
-            };
-            const updated = [newItem, ...prev].slice(0, 5);
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('nosenet_recent_tests', JSON.stringify(updated));
-            }
-            return updated;
           });
         }
       }
@@ -183,7 +283,7 @@ export default function MainDashboardPage() {
     pollLiveState();
     const interval = setInterval(pollLiveState, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isLocalRunning, selectedCake]);
 
   // Handlers for wireless connection
   const handleConnectBluetooth = async () => {
@@ -215,6 +315,22 @@ export default function MainDashboardPage() {
         setCalibrationCount(null);
         setIsCalibrating(false);
         setIsTriggering(true);
+        setIsLocalRunning(true);
+
+        const newTestId = `TEST-${Date.now().toString().slice(-6)}`;
+        setLiveTest({
+          isTestRunning: true,
+          selectedCakeType: selectedCake,
+          startedAt: new Date().toISOString(),
+          testId: newTestId,
+          lastSensorReading: null,
+          sensorReadingsCount: 0,
+          verdict: null,
+          freshnessScore: null,
+          verdictSubmittedAt: null,
+          assessorName: null,
+        });
+
         try {
           await esp32Wireless.sendTriggerRunTest(selectedCake);
           await pollLiveState();
@@ -230,6 +346,7 @@ export default function MainDashboardPage() {
   const handleStopTest = async () => {
     setIsCalibrating(false);
     setCalibrationCount(null);
+    setIsLocalRunning(false);
     try {
       await esp32Wireless.sendStopTest();
       await pollLiveState();
@@ -246,7 +363,16 @@ export default function MainDashboardPage() {
   };
 
   const handleReset = async () => {
+    setIsLocalRunning(false);
+    setLiveTest(null);
     try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        try {
+          const bc = new BroadcastChannel('nosenet_live_channel');
+          bc.postMessage({ type: 'TEST_RESET' });
+          bc.close();
+        } catch {}
+      }
       await fetch('/api/live-test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -259,7 +385,7 @@ export default function MainDashboardPage() {
   };
 
   const isConnected = connectionStatus === 'connected';
-  const isTesting = liveTest?.isTestRunning;
+  const isTesting = isLocalRunning || Boolean(liveTest?.isTestRunning);
 
   // Render Splash Login if not authenticated
   if (isAuthenticated === false) {
@@ -501,12 +627,12 @@ export default function MainDashboardPage() {
               <span>Analyzing Chamber Headspace...</span>
             </div>
             <span className="text-xs font-mono text-amber-300/80">
-              Update #{liveTest.sensorReadingsCount || 1} (Sampling every 2.5s)
+              Update #{liveTest?.sensorReadingsCount || 1} (Sampling every 2.5s)
             </span>
           </div>
 
           <p className="text-xs text-neutral-300 leading-relaxed">
-            The SmartElex BME688 MOX gas sensor is actively monitoring volatile organic compounds (VOCs), ambient chamber temperature, and moisture levels for <strong>{liveTest.selectedCakeType}</strong>. Results will be calculated and displayed soon.
+            The SmartElex BME688 MOX gas sensor is actively monitoring volatile organic compounds (VOCs), ambient chamber temperature, and moisture levels for <strong>{liveTest?.selectedCakeType || selectedCake}</strong>. Results will be calculated and displayed soon.
           </p>
 
           {/* Live Sensor Metrics 4-Grid */}
@@ -516,7 +642,7 @@ export default function MainDashboardPage() {
                 Gas Resistance (R_GAS)
               </span>
               <div className="text-xl sm:text-2xl font-extrabold font-mono text-white">
-                {liveTest.lastSensorReading?.gasResistanceKohm !== null && liveTest.lastSensorReading?.gasResistanceKohm !== undefined
+                {liveTest?.lastSensorReading?.gasResistanceKohm !== null && liveTest?.lastSensorReading?.gasResistanceKohm !== undefined
                   ? `${liveTest.lastSensorReading.gasResistanceKohm.toFixed(2)}`
                   : '24.50'}
                 <span className="text-xs font-normal text-neutral-400 ml-1">kΩ</span>
@@ -528,7 +654,7 @@ export default function MainDashboardPage() {
                 Chamber Temperature
               </span>
               <div className="text-xl sm:text-2xl font-extrabold font-mono text-white">
-                {liveTest.lastSensorReading?.temperatureC !== null && liveTest.lastSensorReading?.temperatureC !== undefined
+                {liveTest?.lastSensorReading?.temperatureC !== null && liveTest?.lastSensorReading?.temperatureC !== undefined
                   ? `${liveTest.lastSensorReading.temperatureC.toFixed(1)}`
                   : '28.6'}
                 <span className="text-xs font-normal text-neutral-400 ml-1">°C</span>
@@ -540,7 +666,7 @@ export default function MainDashboardPage() {
                 Relative Humidity
               </span>
               <div className="text-xl sm:text-2xl font-extrabold font-mono text-white">
-                {liveTest.lastSensorReading?.humidityPercent !== null && liveTest.lastSensorReading?.humidityPercent !== undefined
+                {liveTest?.lastSensorReading?.humidityPercent !== null && liveTest?.lastSensorReading?.humidityPercent !== undefined
                   ? `${liveTest.lastSensorReading.humidityPercent.toFixed(0)}`
                   : '68'}
                 <span className="text-xs font-normal text-neutral-400 ml-1">%</span>
@@ -552,7 +678,7 @@ export default function MainDashboardPage() {
                 Chamber Pressure
               </span>
               <div className="text-xl sm:text-2xl font-extrabold font-mono text-white">
-                {liveTest.lastSensorReading?.pressureHpa !== null && liveTest.lastSensorReading?.pressureHpa !== undefined
+                {liveTest?.lastSensorReading?.pressureHpa !== null && liveTest?.lastSensorReading?.pressureHpa !== undefined
                   ? `${liveTest.lastSensorReading.pressureHpa.toFixed(0)}`
                   : '718'}
                 <span className="text-xs font-normal text-neutral-400 ml-1">hPa</span>
