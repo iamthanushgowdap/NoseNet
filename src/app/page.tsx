@@ -150,6 +150,9 @@ export default function MainDashboardPage() {
 
         if (msg.type === 'VERDICT_SUBMITTED') {
           setIsLocalRunning(false);
+          // IMMEDIATELY HALT HARDWARE SAMPLING
+          esp32Wireless.sendStopTest();
+
           const finalVerdict = msg.verdict;
           const score = msg.score || (
             finalVerdict === 'Fresh' ? 94.6 : finalVerdict === 'Fairly Fresh' ? 74.2 : finalVerdict === 'Stale' ? 52.8 : 18.4
@@ -174,8 +177,10 @@ export default function MainDashboardPage() {
           });
         } else if (msg.type === 'TEST_STOPPED' || msg.type === 'TEST_RESET') {
           setIsLocalRunning(false);
+          esp32Wireless.sendStopTest();
           if (msg.type === 'TEST_RESET') {
             setLiveTest(null);
+            setGasHistory([24.2, 24.5]);
           }
         }
       };
@@ -194,6 +199,9 @@ export default function MainDashboardPage() {
     const unsubSensor = esp32Wireless.subscribeSensorData((reading) => {
       if (!reading) return;
 
+      // STRICT TEST GATE: If test is not running or a verdict was already finalized, drop all packets
+      if (!isLocalRunning || liveTest?.verdict) return;
+
       // 1. Direct real-time gas resistance update (Zero lag)
       if (reading.gasResistanceKohm) {
         const val = Number(reading.gasResistanceKohm);
@@ -207,19 +215,10 @@ export default function MainDashboardPage() {
 
       // 2. Direct real-time live test state update
       setLiveTest((prev) => {
-        const count = (prev?.sensorReadingsCount || 0) + 1;
+        if (!prev || !prev.isTestRunning || prev.verdict) return prev;
+        const count = (prev.sensorReadingsCount || 0) + 1;
         return {
-          ...(prev || {
-            isTestRunning: true,
-            selectedCakeType: selectedCake,
-            startedAt: new Date().toISOString(),
-            testId: `TEST-${Date.now().toString().slice(-6)}`,
-            verdict: null,
-            freshnessScore: null,
-            verdictSubmittedAt: null,
-            assessorName: null,
-          }),
-          isTestRunning: true,
+          ...prev,
           lastSensorReading: reading,
           sensorReadingsCount: count,
         };
@@ -230,7 +229,7 @@ export default function MainDashboardPage() {
       unsub();
       unsubSensor();
     };
-  }, [selectedCake]);
+  }, [isLocalRunning, liveTest?.verdict, selectedCake]);
 
   // Poll live test state from server every 1s
   const pollLiveState = async () => {
@@ -239,16 +238,17 @@ export default function MainDashboardPage() {
       if (res.ok) {
         const data: LiveTestState = await res.json();
 
-        // 1. If an assessor verdict has been recorded, conclude test stably
-        if (data.verdict && data.testId) {
+        // 1. If an assessor verdict has been recorded, conclude test and halt sampling immediately
+        if (data.verdict) {
           setIsLocalRunning(false);
+          esp32Wireless.sendStopTest();
           setLiveTest(data);
           recordRecentTest(data);
           return;
         }
 
         // 2. If locally running, NEVER let a cold lambda false state reset the active test
-        if (isLocalRunning) {
+        if (isLocalRunning && !data.verdict) {
           setLiveTest((prev) => ({
             ...(prev || data),
             isTestRunning: true,
@@ -256,22 +256,22 @@ export default function MainDashboardPage() {
             lastSensorReading: prev?.lastSensorReading || data.lastSensorReading || null,
             sensorReadingsCount: Math.max(prev?.sensorReadingsCount || 0, data.sensorReadingsCount || 0),
           }));
-        } else {
+
+          // Feature 2: Record Gas Resistance curve from poll if not yet updated
+          if (data.lastSensorReading?.gasResistanceKohm) {
+            const val = Number(data.lastSensorReading.gasResistanceKohm);
+            setGasHistory((prev) => {
+              if (prev[prev.length - 1] !== val) {
+                return [...prev.slice(-14), val];
+              }
+              return prev;
+            });
+          }
+        } else if (!isLocalRunning && !liveTest?.verdict) {
           setLiveTest(data);
           if (data.isTestRunning) {
             setIsLocalRunning(true);
           }
-        }
-
-        // Feature 2: Record Gas Resistance curve from poll if not yet updated
-        if (data.lastSensorReading?.gasResistanceKohm) {
-          const val = Number(data.lastSensorReading.gasResistanceKohm);
-          setGasHistory((prev) => {
-            if (prev[prev.length - 1] !== val) {
-              return [...prev.slice(-14), val];
-            }
-            return prev;
-          });
         }
       }
     } catch {
@@ -280,10 +280,13 @@ export default function MainDashboardPage() {
   };
 
   useEffect(() => {
+    // Only poll while test is active or waiting for verdict; pause polling when test is finalized
+    if (liveTest?.verdict && !isLocalRunning) return;
+
     pollLiveState();
     const interval = setInterval(pollLiveState, 1000);
     return () => clearInterval(interval);
-  }, [isLocalRunning, selectedCake]);
+  }, [isLocalRunning, liveTest?.verdict, selectedCake]);
 
   // Handlers for wireless connection
   const handleConnectBluetooth = async () => {
@@ -301,9 +304,28 @@ export default function MainDashboardPage() {
       return;
     }
 
+    // 1. FULL REFRESH: Reset previous test result, graph, and verdict completely
+    setIsLocalRunning(false);
     setIsCalibrating(true);
     setCalibrationCount(5);
     setGasHistory([24.2, 24.5]);
+    setLiveTest(null);
+
+    // 2. REFRESH REMOTE ASSESSOR (Multi-tab Broadcast)
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        const bc = new BroadcastChannel('nosenet_live_channel');
+        bc.postMessage({ type: 'NEW_TEST_STARTING', cakeType: selectedCake });
+        bc.close();
+      } catch {}
+    }
+
+    // 3. RESET SERVER STORE SO PREVIOUS VERDICT IS WIPED OUT
+    fetch('/api/live-test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reset' }),
+    }).catch(() => {});
 
     let remaining = 5;
     const timer = setInterval(async () => {
@@ -365,7 +387,9 @@ export default function MainDashboardPage() {
   const handleReset = async () => {
     setIsLocalRunning(false);
     setLiveTest(null);
+    setGasHistory([24.2, 24.5]);
     try {
+      await esp32Wireless.sendStopTest();
       if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
         try {
           const bc = new BroadcastChannel('nosenet_live_channel');
@@ -385,7 +409,7 @@ export default function MainDashboardPage() {
   };
 
   const isConnected = connectionStatus === 'connected';
-  const isTesting = isLocalRunning || Boolean(liveTest?.isTestRunning);
+  const isTesting = (isLocalRunning || Boolean(liveTest?.isTestRunning)) && !liveTest?.verdict;
 
   // Render Splash Login if not authenticated
   if (isAuthenticated === false) {

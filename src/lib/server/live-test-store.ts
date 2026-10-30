@@ -182,6 +182,11 @@ class LiveTestStore {
   }
 
   public updateSensorData(reading: Partial<LiveSensorSnapshot>): LiveTestState {
+    // STRICT HARDWARE CLOSURE: Never ingest sensor data if test is closed or verdict is already finalized
+    if (!this.state.isTestRunning || this.state.verdict) {
+      return this.getState();
+    }
+
     const fullReading: LiveSensorSnapshot = {
       gasResistanceKohm: reading.gasResistanceKohm ?? null,
       gasResistanceOhm: reading.gasResistanceOhm ?? null,

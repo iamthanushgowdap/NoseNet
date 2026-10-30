@@ -46,7 +46,7 @@ export default function HiddenAssessorPage() {
         setLiveTest(data);
 
         // Notify with vibration when a new test run starts
-        if (data.isTestRunning && !hasVibrated) {
+        if (data.isTestRunning && !data.verdict && !hasVibrated) {
           if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
             navigator.vibrate([250, 100, 250]);
           }
@@ -54,6 +54,11 @@ export default function HiddenAssessorPage() {
           setSubmittedVerdict(null);
         } else if (!data.isTestRunning) {
           setHasVibrated(false);
+        }
+
+        // If a new test has started, clear previously submitted verdict
+        if (data.isTestRunning && !data.verdict && submittedVerdict !== null) {
+          setSubmittedVerdict(null);
         }
 
         if (data.verdict) {
@@ -75,8 +80,10 @@ export default function HiddenAssessorPage() {
         const msg = event.data;
         if (!msg) return;
 
-        if (msg.type === 'TEST_STARTED') {
+        if (msg.type === 'NEW_TEST_STARTING' || msg.type === 'TEST_STARTED') {
+          // COMPLETE REFRESH FOR NEW SPECIMEN TEST
           setSubmittedVerdict(null);
+          setHasVibrated(false);
           setLiveTest({
             isTestRunning: true,
             selectedCakeType: msg.cakeType || 'Normal Cake — Unfrozen',
@@ -94,7 +101,7 @@ export default function HiddenAssessorPage() {
           }
         } else if (msg.type === 'SENSOR_READING') {
           setLiveTest((prev) =>
-            prev
+            prev && !prev.verdict
               ? {
                   ...prev,
                   isTestRunning: true,
@@ -105,6 +112,9 @@ export default function HiddenAssessorPage() {
           );
         } else if (msg.type === 'TEST_STOPPED' || msg.type === 'TEST_RESET') {
           setLiveTest((prev) => (prev ? { ...prev, isTestRunning: false } : null));
+          if (msg.type === 'TEST_RESET') {
+            setSubmittedVerdict(null);
+          }
         }
       };
       return () => channel.close();
@@ -169,6 +179,7 @@ export default function HiddenAssessorPage() {
   const handleSelectVerdict = async (verdict: FreshnessVerdict) => {
     setIsSubmitting(true);
     setSubmittedVerdict(verdict);
+    setLiveTest((prev) => (prev ? { ...prev, isTestRunning: false, verdict } : null));
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       navigator.vibrate(100);
     }
@@ -326,7 +337,7 @@ export default function HiddenAssessorPage() {
   }
 
   // 3. Unlocked Assessor Control Screen
-  const isTesting = liveTest?.isTestRunning;
+  const isTesting = Boolean(liveTest?.isTestRunning) && !submittedVerdict && !liveTest?.verdict;
 
   return (
     <div className="min-h-[100dvh] bg-black text-white p-4 sm:p-6 max-w-md mx-auto flex flex-col justify-between select-none">

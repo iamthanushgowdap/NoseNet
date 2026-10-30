@@ -36,6 +36,9 @@ export class ESP32WirelessManager {
   // Incoming chunk stream buffer
   private incomingBuffer = '';
 
+  // Active testing lock - strictly gates sensor ingestion
+  private isTestActive = false;
+
   // Listeners
   private statusListeners = new Set<WirelessStatusListener>();
   private sensorDataListeners = new Set<WirelessSensorDataListener>();
@@ -57,6 +60,10 @@ export class ESP32WirelessManager {
 
   public getStatusMessage(): string {
     return this.statusMessage;
+  }
+
+  public isTestingActive(): boolean {
+    return this.isTestActive;
   }
 
   public subscribeStatus(listener: WirelessStatusListener): () => void {
@@ -172,6 +179,7 @@ export class ESP32WirelessManager {
 
   // Disconnect
   public async disconnect(): Promise<void> {
+    this.isTestActive = false;
     if (this.bleDevice && this.bleDevice.gatt && this.bleDevice.gatt.connected) {
       this.bleDevice.gatt.disconnect();
     }
@@ -182,6 +190,7 @@ export class ESP32WirelessManager {
 
   // --- 3. TRIGGER MICROCONTROLLER TO RUN SENSOR TEST ---
   public async sendTriggerRunTest(cakeType: string): Promise<boolean> {
+    this.isTestActive = true;
     const command = `RUN_TEST:${cakeType}\n`;
 
     // 1. If connected via Bluetooth
@@ -232,7 +241,10 @@ export class ESP32WirelessManager {
   }
 
   public async sendStopTest(): Promise<boolean> {
+    this.isTestActive = false;
     const command = `STOP_TEST\n`;
+
+    // 1. Send stop over Bluetooth
     if (this.connectionType === 'bluetooth' && this.rxCharacteristic) {
       try {
         const encoder = new TextEncoder();
@@ -242,6 +254,21 @@ export class ESP32WirelessManager {
       }
     }
 
+    // 2. Send stop over Wi-Fi
+    if (this.connectionType === 'wifi' && this.esp32WifiIp) {
+      try {
+        await fetch(`http://${this.esp32WifiIp}/api/stop-test`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'stop_test' }),
+          mode: 'cors',
+        });
+      } catch (err) {
+        console.error('Failed to send Wi-Fi stop command:', err);
+      }
+    }
+
+    // 3. Broadcast stop locally
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
         const bc = new BroadcastChannel('nosenet_live_channel');
@@ -250,6 +277,7 @@ export class ESP32WirelessManager {
       } catch {}
     }
 
+    // 4. Notify server to stop active test
     try {
       await fetch('/api/live-test', {
         method: 'POST',
@@ -282,6 +310,11 @@ export class ESP32WirelessManager {
   }
 
   private parseAndEmitReading(text: string) {
+    // STRICT CLOSURE: If test has been stopped or is inactive, ignore incoming telemetry
+    if (!this.isTestActive) {
+      return;
+    }
+
     try {
       const parsed = JSON.parse(text);
 
