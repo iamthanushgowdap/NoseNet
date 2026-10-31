@@ -12,12 +12,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { FreshnessVerdict, LiveTestState } from '@/lib/server/live-test-store';
-import {
-  broadcastLiveSync,
-  fetchLatestLiveEvents,
-  LiveSyncEvent,
-  NTFY_TOPIC,
-} from '@/lib/sync/live-sync';
+import { broadcastLiveSync } from '@/lib/sync/live-sync';
 import {
   getSupabaseLiveState,
   updateSupabaseLiveState,
@@ -37,6 +32,7 @@ export default function HiddenAssessorPage() {
   const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
   const [submittedVerdict, setSubmittedVerdict] = useState<FreshnessVerdict | null>(null);
   const [hasVibrated, setHasVibrated] = useState<boolean>(false);
+  const lastVibratedTestIdRef = useRef<string | null>(null);
 
   // Check PIN unlock on load
   useEffect(() => {
@@ -56,54 +52,8 @@ export default function HiddenAssessorPage() {
           setSubmittedVerdict(null);
         } else if (dbState.verdict) {
           setSubmittedVerdict(dbState.verdict);
-        }
-        return;
-      }
-
-      const events = await fetchLatestLiveEvents();
-      if (events.length > 0) {
-        const last = events[events.length - 1];
-        if (last.type === 'CAKE_SELECTED' && last.cakeType) {
-          setLiveTest({
-            isTestRunning: false,
-            selectedCakeType: last.cakeType as any,
-            startedAt: null,
-            testId: null,
-            lastSensorReading: null,
-            sensorReadingsCount: 0,
-            verdict: null,
-            freshnessScore: null,
-            verdictSubmittedAt: null,
-            assessorName: null,
-          });
-        } else if (last.type === 'TEST_STARTING' || last.type === 'TEST_RUNNING') {
+        } else {
           setSubmittedVerdict(null);
-          setLiveTest({
-            isTestRunning: true,
-            selectedCakeType: (last.cakeType as any) || 'Normal Cake — Unfrozen',
-            startedAt: last.timestamp || new Date().toISOString(),
-            testId: last.testId || null,
-            lastSensorReading: null,
-            sensorReadingsCount: 0,
-            verdict: null,
-            freshnessScore: null,
-            verdictSubmittedAt: null,
-            assessorName: null,
-          });
-        } else if (last.type === 'VERDICT_SUBMITTED') {
-          setSubmittedVerdict(last.verdict || null);
-          setLiveTest({
-            isTestRunning: false,
-            selectedCakeType: (last.cakeType as any) || 'Normal Cake — Unfrozen',
-            startedAt: null,
-            testId: last.testId || null,
-            lastSensorReading: null,
-            sensorReadingsCount: 0,
-            verdict: last.verdict || null,
-            freshnessScore: last.score ?? null,
-            verdictSubmittedAt: last.timestamp || new Date().toISOString(),
-            assessorName: last.assessorName || 'Remote Assessor',
-          });
         }
       }
     } catch {}
@@ -115,79 +65,7 @@ export default function HiddenAssessorPage() {
     }
   }, [isUnlocked]);
 
-  // 2. Real-time EventSource Push Stream (< 50ms instant reactivity across internet)
-  useEffect(() => {
-    if (!isUnlocked) return;
-    if (typeof window === 'undefined' || !('EventSource' in window)) return;
-
-    let es: EventSource | null = null;
-    try {
-      es = new EventSource(`${NTFY_TOPIC}/sse`);
-
-      es.onmessage = (event) => {
-        try {
-          const raw = JSON.parse(event.data);
-          if (!raw || !raw.message) return;
-          const msg: LiveSyncEvent = typeof raw.message === 'string' ? JSON.parse(raw.message) : raw.message;
-          if (!msg || !msg.type) return;
-
-          if (msg.type === 'CAKE_SELECTED') {
-            // Main station switched specimen
-            setLiveTest((prev) => ({
-              ...(prev || {
-                isTestRunning: false,
-                startedAt: null,
-                testId: null,
-                lastSensorReading: null,
-                sensorReadingsCount: 0,
-                verdict: null,
-                freshnessScore: null,
-                verdictSubmittedAt: null,
-                assessorName: null,
-              }),
-              selectedCakeType: (msg.cakeType as any) || 'Normal Cake — Unfrozen',
-            }));
-          } else if (msg.type === 'TEST_STARTING' || msg.type === 'TEST_RUNNING') {
-            // New specimen test started (1st, 2nd, 3rd, etc.)
-            setSubmittedVerdict(null);
-            setIsSubmitting(false);
-            setHasVibrated(false);
-            setLiveTest({
-              isTestRunning: true,
-              selectedCakeType: (msg.cakeType as any) || 'Normal Cake — Unfrozen',
-              startedAt: new Date().toISOString(),
-              testId: msg.testId || `TEST-${Date.now().toString().slice(-6)}`,
-              lastSensorReading: null,
-              sensorReadingsCount: 0,
-              verdict: null,
-              freshnessScore: null,
-              verdictSubmittedAt: null,
-              assessorName: null,
-            });
-            if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-              navigator.vibrate([250, 100, 250]);
-            }
-          } else if (msg.type === 'VERDICT_SUBMITTED') {
-            setSubmittedVerdict(msg.verdict || null);
-            setLiveTest((prev) =>
-              prev ? { ...prev, isTestRunning: false, verdict: msg.verdict || null, freshnessScore: msg.score ?? null } : null
-            );
-          } else if (msg.type === 'TEST_STOPPED' || msg.type === 'TEST_RESET') {
-            setLiveTest((prev) => (prev ? { ...prev, isTestRunning: false } : null));
-            if (msg.type === 'TEST_RESET') {
-              setSubmittedVerdict(null);
-            }
-          }
-        } catch {}
-      };
-    } catch {}
-
-    return () => {
-      if (es) es.close();
-    };
-  }, [isUnlocked]);
-
-  // 3. Local BroadcastChannel (0ms multi-tab sync)
+  // 2. Local BroadcastChannel for instant same-browser multi-window sync
   useEffect(() => {
     if (!isUnlocked) return;
     if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
@@ -198,6 +76,7 @@ export default function HiddenAssessorPage() {
         if (!msg) return;
 
         if (msg.type === 'CAKE_SELECTED') {
+          setSubmittedVerdict(null);
           setLiveTest((prev) => ({
             ...(prev || {
               isTestRunning: false,
@@ -211,6 +90,8 @@ export default function HiddenAssessorPage() {
               assessorName: null,
             }),
             selectedCakeType: (msg.cakeType as any) || 'Normal Cake — Unfrozen',
+            verdict: null,
+            freshnessScore: null,
           }));
         } else if (msg.type === 'NEW_TEST_STARTING' || msg.type === 'TEST_STARTED' || msg.type === 'TEST_STARTING') {
           setSubmittedVerdict(null);
@@ -239,60 +120,74 @@ export default function HiddenAssessorPage() {
     } catch {}
   }, [isUnlocked]);
 
-  // 4. Manual Refresh Button Action directly from Supabase Database
+  // 3. Manual Refresh Button Action directly from Supabase Database
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
-    setRefreshNotice('Syncing with Supabase...');
+    setRefreshNotice('Connecting to Supabase...');
     try {
       const dbState = await getSupabaseLiveState();
       if (dbState) {
         setLiveTest(dbState);
         if (dbState.isTestRunning && !dbState.verdict) {
           setSubmittedVerdict(null);
+          setRefreshNotice(`Test active: ${dbState.testId || 'Running'}`);
         } else if (dbState.verdict) {
           setSubmittedVerdict(dbState.verdict);
+          setRefreshNotice(`Verdict: ${dbState.verdict}`);
+        } else {
+          setSubmittedVerdict(null);
+          setRefreshNotice(`Specimen: ${dbState.selectedCakeType}`);
         }
-        setRefreshNotice('Synced with Supabase!');
       } else {
-        setRefreshNotice('Synced!');
+        setRefreshNotice('Synced with Supabase');
       }
     } catch {
-      setRefreshNotice('Sync check completed');
+      setRefreshNotice('Sync checked');
     } finally {
       setTimeout(() => {
         setIsRefreshing(false);
         setRefreshNotice(null);
-      }, 700);
+      }, 800);
     }
   };
 
-  // 5. Automatic fast Supabase database polling (Every 600ms)
+  // 4. Automatic fast Supabase database polling (Every 400ms)
   useEffect(() => {
     if (!isUnlocked) return;
+    let isMounted = true;
+
     const syncFromSupabase = async () => {
       try {
         const dbState = await getSupabaseLiveState();
-        if (dbState) {
-          if (dbState.isTestRunning && !dbState.verdict) {
-            setLiveTest(dbState);
-            setSubmittedVerdict(null);
-          } else if (dbState.verdict) {
-            setLiveTest(dbState);
-            setSubmittedVerdict(dbState.verdict);
-          } else {
-            setLiveTest((prev) => ({
-              ...(prev || dbState),
-              isTestRunning: false,
-              selectedCakeType: dbState.selectedCakeType || prev?.selectedCakeType || 'Normal Cake — Unfrozen',
-              testId: dbState.testId,
-            }));
+        if (!isMounted || !dbState) return;
+
+        if (dbState.isTestRunning && !dbState.verdict) {
+          setLiveTest(dbState);
+          setSubmittedVerdict(null);
+          setIsSubmitting(false);
+
+          if (dbState.testId && lastVibratedTestIdRef.current !== dbState.testId) {
+            lastVibratedTestIdRef.current = dbState.testId;
+            if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+              navigator.vibrate([250, 100, 250]);
+            }
           }
+        } else if (dbState.verdict) {
+          setLiveTest(dbState);
+          setSubmittedVerdict(dbState.verdict);
+        } else {
+          setLiveTest(dbState);
+          setSubmittedVerdict(null);
         }
       } catch {}
     };
 
-    const interval = setInterval(syncFromSupabase, 600);
-    return () => clearInterval(interval);
+    syncFromSupabase();
+    const interval = setInterval(syncFromSupabase, 400);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [isUnlocked]);
 
   // Keypad Handlers
@@ -361,32 +256,32 @@ export default function HiddenAssessorPage() {
     else calculatedScore = 16.5;
 
     // 1. UPDATE SUPABASE POSTGRESQL DATABASE
-    updateSupabaseLiveState({
+    await updateSupabaseLiveState({
       is_test_running: false,
       verdict,
       freshness_score: calculatedScore,
       verdict_submitted_at: new Date().toISOString(),
-      assessor_name: 'Remote Assessor',
+      assessor_name: 'Phone Assessor',
     }).catch(() => {});
 
     // 2. ARCHIVE RECORD IN SUPABASE TEST HISTORY
-    insertSupabaseTestRecord({
+    await insertSupabaseTestRecord({
       testId: currentTestId,
       cakeType: currentCake,
       verdict,
       freshnessScore: calculatedScore,
-      assessorName: 'Remote Assessor',
+      assessorName: 'Phone Assessor',
     }).catch(() => {});
 
-    // 3. BROADCAST VIA REAL-TIME SSE & BROADCASTCHANNEL (< 50ms)
+    // 3. BROADCAST VIA LOCAL BROADCASTCHANNEL (Instant same-device sync)
     broadcastLiveSync({
       type: 'VERDICT_SUBMITTED',
       verdict,
       testId: currentTestId,
       cakeType: currentCake,
       score: calculatedScore,
-      assessorName: 'Remote Assessor',
-    }).catch(() => {});
+      assessorName: 'Phone Assessor',
+    });
 
     // 4. POST TO LOCAL API
     fetch('/api/live-test/verdict', {
@@ -396,7 +291,7 @@ export default function HiddenAssessorPage() {
         verdict,
         testId: currentTestId,
         score: calculatedScore,
-        assessorName: 'Remote Assessor',
+        assessorName: 'Phone Assessor',
       }),
     }).catch(() => {});
 
@@ -597,7 +492,7 @@ export default function HiddenAssessorPage() {
             </div>
             <div className="flex items-center gap-2 pt-1 text-[11px] font-mono text-neutral-400">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Connected via SSE • Ready for test run</span>
+              <span>Connected to Supabase PostgreSQL • Live sync active</span>
             </div>
           </div>
         )}

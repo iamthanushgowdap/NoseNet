@@ -120,7 +120,7 @@ class LiveTestStore {
       type: 'TEST_STARTING',
       cakeType,
       testId,
-    }).catch(() => {});
+    });
 
     return this.getState();
   }
@@ -153,7 +153,7 @@ class LiveTestStore {
       type: 'TEST_STARTING',
       cakeType,
       testId,
-    }).catch(() => {});
+    });
     return this.getState();
   }
 
@@ -161,7 +161,7 @@ class LiveTestStore {
     this.state.isTestRunning = false;
     this.lastCloudSyncTime = Date.now();
     await updateSupabaseLiveState({ is_test_running: false });
-    broadcastLiveSync({ type: 'TEST_STOPPED' }).catch(() => {});
+    broadcastLiveSync({ type: 'TEST_STOPPED' });
     return this.getState();
   }
 
@@ -169,7 +169,7 @@ class LiveTestStore {
     this.state.isTestRunning = false;
     this.lastCloudSyncTime = Date.now();
     updateSupabaseLiveState({ is_test_running: false }).catch(() => {});
-    broadcastLiveSync({ type: 'TEST_STOPPED' }).catch(() => {});
+    broadcastLiveSync({ type: 'TEST_STOPPED' });
     return this.getState();
   }
 
@@ -193,7 +193,7 @@ class LiveTestStore {
       verdict: null,
       freshness_score: null,
     });
-    broadcastLiveSync({ type: 'TEST_RESET' }).catch(() => {});
+    broadcastLiveSync({ type: 'TEST_RESET' });
     return this.getState();
   }
 
@@ -217,7 +217,7 @@ class LiveTestStore {
       verdict: null,
       freshness_score: null,
     }).catch(() => {});
-    broadcastLiveSync({ type: 'TEST_RESET' }).catch(() => {});
+    broadcastLiveSync({ type: 'TEST_RESET' });
     return this.getState();
   }
 
@@ -298,7 +298,7 @@ class LiveTestStore {
       testId: this.state.testId,
       cakeType: this.state.selectedCakeType,
       assessorName,
-    }).catch(() => {});
+    });
 
     return this.getState();
   }
@@ -349,7 +349,7 @@ class LiveTestStore {
       testId: this.state.testId,
       cakeType: this.state.selectedCakeType,
       assessorName,
-    }).catch(() => {});
+    });
     return this.getState();
   }
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Bluetooth,
   Play,
@@ -26,12 +26,7 @@ import {
   WirelessConnectionType,
 } from '@/lib/wireless/esp32-wireless';
 import { CakeType, FreshnessVerdict, LiveTestState } from '@/lib/server/live-test-store';
-import {
-  broadcastLiveSync,
-  fetchLatestLiveEvents,
-  LiveSyncEvent,
-  NTFY_TOPIC,
-} from '@/lib/sync/live-sync';
+import { broadcastLiveSync, LiveSyncEvent } from '@/lib/sync/live-sync';
 import {
   getSupabaseLiveState,
   updateSupabaseLiveState,
@@ -90,6 +85,7 @@ export default function MainDashboardPage() {
   const [selectedCake, setSelectedCake] = useState<CakeType>('Normal Cake — Unfrozen');
   const [liveTest, setLiveTest] = useState<LiveTestState | null>(null);
   const [activeTestId, setActiveTestId] = useState<string | null>(null);
+  const activeTestIdRef = useRef<string | null>(null);
   const [isLocalRunning, setIsLocalRunning] = useState<boolean>(false);
   const [isTriggering, setIsTriggering] = useState<boolean>(false);
 
@@ -161,8 +157,8 @@ export default function MainDashboardPage() {
         if (!msg) return;
 
         if (msg.type === 'VERDICT_SUBMITTED') {
-          // If message is tagged with a testId, ensure it matches our activeTestId
-          if (msg.testId && activeTestId && msg.testId !== activeTestId) {
+          // If message is tagged with a testId, ensure it matches our active test
+          if (activeTestIdRef.current && msg.testId && msg.testId !== activeTestIdRef.current) {
             return;
           }
 
@@ -174,37 +170,35 @@ export default function MainDashboardPage() {
           const score = msg.score || (
             finalVerdict === 'Fresh' ? 94.6 : finalVerdict === 'Fairly Fresh' ? 74.2 : finalVerdict === 'Stale' ? 52.8 : 18.4
           );
-          setLiveTest((prev) => {
-            const updated: LiveTestState = {
-              ...(prev || {
-                selectedCakeType: selectedCake,
-                startedAt: new Date().toISOString(),
-                testId: activeTestId || `TEST-${Date.now().toString().slice(-6)}`,
-                lastSensorReading: null,
-                sensorReadingsCount: 1,
-              }),
-              isTestRunning: false,
-              verdict: finalVerdict,
-              freshnessScore: score,
-              verdictSubmittedAt: new Date().toISOString(),
-              assessorName: msg.assessorName || 'Remote Assessor',
-            };
-            recordRecentTest(updated);
-            return updated;
-          });
+          const concludedState: LiveTestState = {
+            selectedCakeType: (msg.cakeType as any) || selectedCake,
+            startedAt: new Date().toISOString(),
+            testId: msg.testId || activeTestIdRef.current || `TEST-${Date.now().toString().slice(-6)}`,
+            lastSensorReading: null,
+            sensorReadingsCount: 1,
+            isTestRunning: false,
+            verdict: finalVerdict,
+            freshnessScore: score,
+            verdictSubmittedAt: new Date().toISOString(),
+            assessorName: msg.assessorName || 'Phone Assessor',
+          };
+          setLiveTest(concludedState);
+          recordRecentTest(concludedState);
+          activeTestIdRef.current = null;
         } else if (msg.type === 'TEST_STOPPED' || msg.type === 'TEST_RESET') {
           setIsLocalRunning(false);
           esp32Wireless.sendStopTest();
           if (msg.type === 'TEST_RESET') {
             setLiveTest(null);
             setActiveTestId(null);
+            activeTestIdRef.current = null;
             setGasHistory([24.2, 24.5]);
           }
         }
       };
       return () => channel.close();
     } catch {}
-  }, [activeTestId, selectedCake]);
+  }, [selectedCake]);
 
   // Subscribe to Wireless Manager (Direct telemetry ingestion - 100% LOCAL & FAST)
   useEffect(() => {
@@ -219,7 +213,7 @@ export default function MainDashboardPage() {
 
       // STRICT TEST GATE: Only ingest into live test when a test is actively running
       if (!isLocalRunning) return;
-      if (liveTest?.verdict && liveTest.testId === activeTestId) return;
+      if (liveTest?.verdict && liveTest.testId === activeTestIdRef.current) return;
 
       // 1. Direct real-time gas resistance update (Zero lag)
       if (reading.gasResistanceKohm) {
@@ -234,7 +228,7 @@ export default function MainDashboardPage() {
 
       // 2. Direct real-time live test state update
       setLiveTest((prev) => {
-        if (!prev || !prev.isTestRunning || (prev.verdict && prev.testId === activeTestId)) return prev;
+        if (!prev || !prev.isTestRunning || (prev.verdict && prev.testId === activeTestIdRef.current)) return prev;
         const count = (prev.sensorReadingsCount || 0) + 1;
         return {
           ...prev,
@@ -248,88 +242,51 @@ export default function MainDashboardPage() {
       unsub();
       unsubSensor();
     };
-  }, [activeTestId, isLocalRunning, liveTest?.verdict, liveTest?.testId, selectedCake]);
+  }, [isLocalRunning, liveTest?.verdict, liveTest?.testId, selectedCake]);
 
   // Specimen selection handler with instant Supabase database update and cloud broadcast
-  const handleSelectCake = (cakeId: CakeType) => {
+  const handleSelectCake = async (cakeId: CakeType) => {
     setSelectedCake(cakeId);
-    updateSupabaseLiveState({ selected_cake_type: cakeId }).catch(() => {});
+    setLiveTest(null);
+    setActiveTestId(null);
+    activeTestIdRef.current = null;
+    setIsLocalRunning(false);
+    esp32Wireless.sendStopTest();
+
+    // Persist to Supabase: clear previous test verdict and update specimen
+    await updateSupabaseLiveState({
+      selected_cake_type: cakeId,
+      is_test_running: false,
+      test_id: null,
+      verdict: null,
+      freshness_score: null,
+      verdict_submitted_at: null,
+      assessor_name: null,
+    }).catch(() => {});
+
     broadcastLiveSync({
       type: 'CAKE_SELECTED',
       cakeType: cakeId,
     });
   };
 
-  // 1. Zero-latency EventSource SSE stream from ntfy.sh (< 50ms push reactivity)
-  useEffect(() => {
-    if (typeof window === 'undefined' || !('EventSource' in window)) return;
-    let es: EventSource | null = null;
-    try {
-      es = new EventSource(`${NTFY_TOPIC}/sse`);
-
-      es.onmessage = (event) => {
-        try {
-          const raw = JSON.parse(event.data);
-          if (!raw || !raw.message) return;
-          const msg: LiveSyncEvent = typeof raw.message === 'string' ? JSON.parse(raw.message) : raw.message;
-          if (!msg || !msg.type) return;
-
-          if (msg.type === 'VERDICT_SUBMITTED') {
-            setIsLocalRunning(false);
-            esp32Wireless.sendStopTest();
-            const finalScore =
-              msg.score ||
-              (msg.verdict === 'Fresh'
-                ? 95.2
-                : msg.verdict === 'Fairly Fresh'
-                ? 74.8
-                : msg.verdict === 'Stale'
-                ? 52.3
-                : 16.5);
-            const concludedState: LiveTestState = {
-              isTestRunning: false,
-              selectedCakeType: (msg.cakeType as any) || selectedCake,
-              startedAt: new Date().toISOString(),
-              testId: msg.testId || activeTestId,
-              lastSensorReading: null,
-              sensorReadingsCount: 1,
-              verdict: msg.verdict || null,
-              freshnessScore: finalScore,
-              verdictSubmittedAt: new Date().toISOString(),
-              assessorName: msg.assessorName || 'Remote Assessor',
-            };
-            setLiveTest(concludedState);
-            recordRecentTest(concludedState);
-          } else if (msg.type === 'TEST_STOPPED' || msg.type === 'TEST_RESET') {
-            setIsLocalRunning(false);
-            esp32Wireless.sendStopTest();
-            if (msg.type === 'TEST_RESET') {
-              setLiveTest(null);
-              setActiveTestId(null);
-              setGasHistory([24.2, 24.5]);
-            }
-          }
-        } catch {}
-      };
-    } catch {}
-
-    return () => {
-      if (es) es.close();
-    };
-  }, [activeTestId, selectedCake]);
-
-  // 2. Poll live test state directly from Supabase Database
+  // Poll live test state directly from Supabase PostgreSQL Database (Fast & Reliable)
   const pollLiveState = async () => {
     try {
       const supabaseState = await getSupabaseLiveState();
-      if (supabaseState && supabaseState.verdict) {
-        const isCurrent = !activeTestId || supabaseState.testId === activeTestId || isLocalRunning;
-        if (isCurrent) {
+      if (!supabaseState) return;
+
+      // When remote assessor submits verdict on phone, Supabase has verdict
+      if (supabaseState.verdict) {
+        // STRICT MATCH: Only finalize if it matches the current active test ID
+        const isCurrentActive = Boolean(activeTestIdRef.current && supabaseState.testId === activeTestIdRef.current);
+        if (isCurrentActive) {
           setIsLocalRunning(false);
+          // IMMEDIATELY HALT ESP32 SENSOR SAMPLING
           esp32Wireless.sendStopTest();
           setLiveTest(supabaseState);
           recordRecentTest(supabaseState);
-          return;
+          activeTestIdRef.current = null;
         }
       }
     } catch {
@@ -338,13 +295,13 @@ export default function MainDashboardPage() {
   };
 
   useEffect(() => {
-    // Only poll while test is active or waiting for verdict; pause polling when test is finalized
-    if (liveTest?.verdict && !isLocalRunning) return;
+    // Only poll while a test is calibrating, actively running, or waiting for remote verdict
+    if (!isLocalRunning && !isCalibrating && !activeTestIdRef.current) return;
 
     pollLiveState();
-    const interval = setInterval(pollLiveState, 600);
+    const interval = setInterval(pollLiveState, 400);
     return () => clearInterval(interval);
-  }, [activeTestId, isLocalRunning, liveTest?.verdict, selectedCake]);
+  }, [isLocalRunning, isCalibrating, activeTestId]);
 
   // Handlers for wireless connection
   const handleConnectBluetooth = async () => {
@@ -365,6 +322,7 @@ export default function MainDashboardPage() {
     // 1. FULL REFRESH: Assign brand new Test ID and reset previous state completely
     const newTestId = `TEST-${Math.floor(100000 + Math.random() * 900000)}`;
     setActiveTestId(newTestId);
+    activeTestIdRef.current = newTestId;
     setIsLocalRunning(false);
     setIsCalibrating(true);
     setCalibrationCount(5);
@@ -379,6 +337,8 @@ export default function MainDashboardPage() {
       verdict: null,
       freshness_score: null,
       started_at: new Date().toISOString(),
+      verdict_submitted_at: null,
+      assessor_name: null,
     }).catch(() => {});
 
     // 3. BROADCAST TEST_STARTING TO ASSESSOR (Instant push notification across phone & tabs)
@@ -442,6 +402,7 @@ export default function MainDashboardPage() {
     setCalibrationCount(null);
     setIsLocalRunning(false);
     setActiveTestId(null);
+    activeTestIdRef.current = null;
     updateSupabaseLiveState({ is_test_running: false }).catch(() => {});
     broadcastLiveSync({ type: 'TEST_STOPPED' });
     try {
@@ -459,8 +420,11 @@ export default function MainDashboardPage() {
   };
 
   const handleReset = async () => {
+    setIsCalibrating(false);
+    setCalibrationCount(null);
     setIsLocalRunning(false);
     setActiveTestId(null);
+    activeTestIdRef.current = null;
     setLiveTest(null);
     setGasHistory([24.2, 24.5]);
     updateSupabaseLiveState({
@@ -468,6 +432,8 @@ export default function MainDashboardPage() {
       test_id: null,
       verdict: null,
       freshness_score: null,
+      verdict_submitted_at: null,
+      assessor_name: null,
     }).catch(() => {});
     broadcastLiveSync({ type: 'TEST_RESET' });
     try {
