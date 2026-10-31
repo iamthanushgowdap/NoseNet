@@ -51,3 +51,5 @@ src/data/NoseNet_Major_Project_Report.*
 src/data/NoseNet-7Day-Complete-Experimental-Readings.*
 src/components/example/*.pdf
 src/components/example/Readings-Major_Project.txt
+
+supabase/.temp/

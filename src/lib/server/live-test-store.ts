@@ -1,5 +1,10 @@
-// In-memory + cloud-bridged live test store for instant cross-device and cross-lambda synchronization
-import { broadcastLiveSync, fetchLatestLiveEvents, LiveSyncEvent } from '@/lib/sync/live-sync';
+// In-memory + Supabase PostgreSQL live test store for instant cross-device synchronization
+import { broadcastLiveSync, LiveSyncEvent } from '@/lib/sync/live-sync';
+import {
+  getSupabaseLiveState,
+  updateSupabaseLiveState,
+  insertSupabaseTestRecord,
+} from '@/lib/supabase/supabase-client';
 
 export type CakeType =
   | 'Normal Cake — Frozen'
@@ -65,37 +70,19 @@ class LiveTestStore {
 
   public async getSyncedState(): Promise<LiveTestState> {
     const now = Date.now();
-    if (now - this.lastCloudSyncTime > 400) {
+    if (now - this.lastCloudSyncTime > 300) {
       this.lastCloudSyncTime = now;
       try {
-        const events = await fetchLatestLiveEvents();
-        if (events.length > 0) {
-          const last = events[events.length - 1];
-          if (last.type === 'CAKE_SELECTED' && last.cakeType) {
-            this.state.selectedCakeType = last.cakeType as CakeType;
-          } else if (last.type === 'TEST_STARTING' || last.type === 'TEST_RUNNING') {
-            this.state.isTestRunning = true;
-            if (last.cakeType) this.state.selectedCakeType = last.cakeType as CakeType;
-            if (last.testId) this.state.testId = last.testId;
-            this.state.verdict = null;
-            this.state.freshnessScore = null;
-            this.state.startedAt = last.timestamp || new Date().toISOString();
-          } else if (last.type === 'VERDICT_SUBMITTED') {
-            this.state.isTestRunning = false;
-            this.state.verdict = (last.verdict as FreshnessVerdict) || null;
-            this.state.freshnessScore = last.score ?? null;
-            if (last.testId) this.state.testId = last.testId;
-            if (last.cakeType) this.state.selectedCakeType = last.cakeType as CakeType;
-            this.state.verdictSubmittedAt = last.timestamp || new Date().toISOString();
-            this.state.assessorName = last.assessorName || 'Phone Assessor';
-          } else if (last.type === 'TEST_STOPPED' || last.type === 'TEST_RESET') {
-            this.state.isTestRunning = false;
-            if (last.type === 'TEST_RESET') {
-              this.state.verdict = null;
-              this.state.freshnessScore = null;
-              this.state.testId = null;
-            }
-          }
+        const supabaseState = await getSupabaseLiveState();
+        if (supabaseState) {
+          this.state.isTestRunning = supabaseState.isTestRunning;
+          if (supabaseState.selectedCakeType) this.state.selectedCakeType = supabaseState.selectedCakeType;
+          if (supabaseState.testId) this.state.testId = supabaseState.testId;
+          this.state.verdict = supabaseState.verdict;
+          this.state.freshnessScore = supabaseState.freshnessScore;
+          this.state.startedAt = supabaseState.startedAt;
+          this.state.verdictSubmittedAt = supabaseState.verdictSubmittedAt;
+          this.state.assessorName = supabaseState.assessorName;
         }
       } catch {}
     }
@@ -117,11 +104,24 @@ class LiveTestStore {
       assessorName: null,
     };
     this.lastCloudSyncTime = Date.now();
-    await broadcastLiveSync({
+
+    // Persist to Supabase Database
+    await updateSupabaseLiveState({
+      is_test_running: true,
+      selected_cake_type: cakeType,
+      test_id: testId,
+      verdict: null,
+      freshness_score: null,
+      started_at: this.state.startedAt,
+    });
+
+    // Broadcast across live channels
+    broadcastLiveSync({
       type: 'TEST_STARTING',
       cakeType,
       testId,
-    });
+    }).catch(() => {});
+
     return this.getState();
   }
 
@@ -140,6 +140,15 @@ class LiveTestStore {
       assessorName: null,
     };
     this.lastCloudSyncTime = Date.now();
+    updateSupabaseLiveState({
+      is_test_running: true,
+      selected_cake_type: cakeType,
+      test_id: testId,
+      verdict: null,
+      freshness_score: null,
+      started_at: this.state.startedAt,
+    }).catch(() => {});
+
     broadcastLiveSync({
       type: 'TEST_STARTING',
       cakeType,
@@ -151,13 +160,15 @@ class LiveTestStore {
   public async stopTestAsync(): Promise<LiveTestState> {
     this.state.isTestRunning = false;
     this.lastCloudSyncTime = Date.now();
-    await broadcastLiveSync({ type: 'TEST_STOPPED' });
+    await updateSupabaseLiveState({ is_test_running: false });
+    broadcastLiveSync({ type: 'TEST_STOPPED' }).catch(() => {});
     return this.getState();
   }
 
   public stopTest(): LiveTestState {
     this.state.isTestRunning = false;
     this.lastCloudSyncTime = Date.now();
+    updateSupabaseLiveState({ is_test_running: false }).catch(() => {});
     broadcastLiveSync({ type: 'TEST_STOPPED' }).catch(() => {});
     return this.getState();
   }
@@ -176,7 +187,13 @@ class LiveTestStore {
       assessorName: null,
     };
     this.lastCloudSyncTime = Date.now();
-    await broadcastLiveSync({ type: 'TEST_RESET' });
+    await updateSupabaseLiveState({
+      is_test_running: false,
+      test_id: null,
+      verdict: null,
+      freshness_score: null,
+    });
+    broadcastLiveSync({ type: 'TEST_RESET' }).catch(() => {});
     return this.getState();
   }
 
@@ -194,6 +211,12 @@ class LiveTestStore {
       assessorName: null,
     };
     this.lastCloudSyncTime = Date.now();
+    updateSupabaseLiveState({
+      is_test_running: false,
+      test_id: null,
+      verdict: null,
+      freshness_score: null,
+    }).catch(() => {});
     broadcastLiveSync({ type: 'TEST_RESET' }).catch(() => {});
     return this.getState();
   }
@@ -248,14 +271,35 @@ class LiveTestStore {
     }
 
     this.lastCloudSyncTime = Date.now();
-    await broadcastLiveSync({
+
+    // Persist to Supabase Database
+    await updateSupabaseLiveState({
+      is_test_running: false,
+      verdict,
+      freshness_score: this.state.freshnessScore,
+      verdict_submitted_at: this.state.verdictSubmittedAt,
+      assessor_name: assessorName,
+    });
+
+    if (this.state.testId && this.state.selectedCakeType) {
+      insertSupabaseTestRecord({
+        testId: this.state.testId,
+        cakeType: this.state.selectedCakeType,
+        verdict,
+        freshnessScore: this.state.freshnessScore,
+        assessorName,
+      }).catch(() => {});
+    }
+
+    broadcastLiveSync({
       type: 'VERDICT_SUBMITTED',
       verdict,
       score: this.state.freshnessScore,
       testId: this.state.testId,
       cakeType: this.state.selectedCakeType,
       assessorName,
-    });
+    }).catch(() => {});
+
     return this.getState();
   }
 
@@ -290,6 +334,14 @@ class LiveTestStore {
     }
 
     this.lastCloudSyncTime = Date.now();
+    updateSupabaseLiveState({
+      is_test_running: false,
+      verdict,
+      freshness_score: this.state.freshnessScore,
+      verdict_submitted_at: this.state.verdictSubmittedAt,
+      assessor_name: assessorName,
+    }).catch(() => {});
+
     broadcastLiveSync({
       type: 'VERDICT_SUBMITTED',
       verdict,

@@ -32,6 +32,11 @@ import {
   LiveSyncEvent,
   NTFY_TOPIC,
 } from '@/lib/sync/live-sync';
+import {
+  getSupabaseLiveState,
+  updateSupabaseLiveState,
+  insertSupabaseTestRecord,
+} from '@/lib/supabase/supabase-client';
 import { SplashLogin } from '@/components/auth/splash-login';
 import { SensorResponseSparkline } from '@/components/dashboard/sensor-response-sparkline';
 import { RecentTestsLog, RecentTestItem } from '@/components/dashboard/recent-tests-log';
@@ -245,9 +250,10 @@ export default function MainDashboardPage() {
     };
   }, [activeTestId, isLocalRunning, liveTest?.verdict, liveTest?.testId, selectedCake]);
 
-  // Specimen selection handler with instant cloud broadcast
+  // Specimen selection handler with instant Supabase database update and cloud broadcast
   const handleSelectCake = (cakeId: CakeType) => {
     setSelectedCake(cakeId);
+    updateSupabaseLiveState({ selected_cake_type: cakeId }).catch(() => {});
     broadcastLiveSync({
       type: 'CAKE_SELECTED',
       cakeType: cakeId,
@@ -312,33 +318,18 @@ export default function MainDashboardPage() {
     };
   }, [activeTestId, selectedCake]);
 
-  // 2. Poll live test state backup
+  // 2. Poll live test state directly from Supabase Database
   const pollLiveState = async () => {
     try {
-      const events = await fetchLatestLiveEvents();
-      if (events.length > 0) {
-        const last = events[events.length - 1];
-        if (last.type === 'VERDICT_SUBMITTED' && last.verdict) {
-          const isCurrent = !activeTestId || last.testId === activeTestId || isLocalRunning;
-          if (isCurrent) {
-            setIsLocalRunning(false);
-            esp32Wireless.sendStopTest();
-            const concludedState: LiveTestState = {
-              isTestRunning: false,
-              selectedCakeType: (last.cakeType as any) || selectedCake,
-              startedAt: new Date().toISOString(),
-              testId: last.testId || activeTestId,
-              lastSensorReading: null,
-              sensorReadingsCount: 1,
-              verdict: last.verdict as any,
-              freshnessScore: last.score ?? 85.0,
-              verdictSubmittedAt: last.timestamp || new Date().toISOString(),
-              assessorName: last.assessorName || 'Remote Assessor',
-            };
-            setLiveTest(concludedState);
-            recordRecentTest(concludedState);
-            return;
-          }
+      const supabaseState = await getSupabaseLiveState();
+      if (supabaseState && supabaseState.verdict) {
+        const isCurrent = !activeTestId || supabaseState.testId === activeTestId || isLocalRunning;
+        if (isCurrent) {
+          setIsLocalRunning(false);
+          esp32Wireless.sendStopTest();
+          setLiveTest(supabaseState);
+          recordRecentTest(supabaseState);
+          return;
         }
       }
     } catch {
@@ -380,14 +371,24 @@ export default function MainDashboardPage() {
     setGasHistory([24.2, 24.5]);
     setLiveTest(null);
 
-    // 2. BROADCAST TEST_STARTING TO ASSESSOR (Instant push notification across phone & tabs)
+    // 2. Persist to Supabase Database immediately
+    updateSupabaseLiveState({
+      is_test_running: true,
+      selected_cake_type: selectedCake,
+      test_id: newTestId,
+      verdict: null,
+      freshness_score: null,
+      started_at: new Date().toISOString(),
+    }).catch(() => {});
+
+    // 3. BROADCAST TEST_STARTING TO ASSESSOR (Instant push notification across phone & tabs)
     broadcastLiveSync({
       type: 'TEST_STARTING',
       cakeType: selectedCake,
       testId: newTestId,
     });
 
-    // 3. INITIALIZE SERVER STORE WITH NEW TEST ID
+    // 4. INITIALIZE SERVER STORE WITH NEW TEST ID
     fetch('/api/live-test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -441,6 +442,7 @@ export default function MainDashboardPage() {
     setCalibrationCount(null);
     setIsLocalRunning(false);
     setActiveTestId(null);
+    updateSupabaseLiveState({ is_test_running: false }).catch(() => {});
     broadcastLiveSync({ type: 'TEST_STOPPED' });
     try {
       await esp32Wireless.sendStopTest();
@@ -461,6 +463,12 @@ export default function MainDashboardPage() {
     setActiveTestId(null);
     setLiveTest(null);
     setGasHistory([24.2, 24.5]);
+    updateSupabaseLiveState({
+      is_test_running: false,
+      test_id: null,
+      verdict: null,
+      freshness_score: null,
+    }).catch(() => {});
     broadcastLiveSync({ type: 'TEST_RESET' });
     try {
       await esp32Wireless.sendStopTest();

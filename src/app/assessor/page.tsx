@@ -18,6 +18,11 @@ import {
   LiveSyncEvent,
   NTFY_TOPIC,
 } from '@/lib/sync/live-sync';
+import {
+  getSupabaseLiveState,
+  updateSupabaseLiveState,
+  insertSupabaseTestRecord,
+} from '@/lib/supabase/supabase-client';
 
 export default function HiddenAssessorPage() {
   // PIN lock protection (Password: 11111)
@@ -41,9 +46,20 @@ export default function HiddenAssessorPage() {
     }
   }, []);
 
-  // 1. Initial State Fetch on Unlock
+  // 1. Initial State Fetch on Unlock from Supabase Database
   const loadInitialState = async () => {
     try {
+      const dbState = await getSupabaseLiveState();
+      if (dbState) {
+        setLiveTest(dbState);
+        if (dbState.isTestRunning && !dbState.verdict) {
+          setSubmittedVerdict(null);
+        } else if (dbState.verdict) {
+          setSubmittedVerdict(dbState.verdict);
+        }
+        return;
+      }
+
       const events = await fetchLatestLiveEvents();
       if (events.length > 0) {
         const last = events[events.length - 1];
@@ -223,65 +239,25 @@ export default function HiddenAssessorPage() {
     } catch {}
   }, [isUnlocked]);
 
-  // 4. Manual Refresh Button Action
+  // 4. Manual Refresh Button Action directly from Supabase Database
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
-    setRefreshNotice('Syncing with Station...');
+    setRefreshNotice('Syncing with Supabase...');
     try {
-      const events = await fetchLatestLiveEvents();
-      if (events.length > 0) {
-        const last = events[events.length - 1];
-        if (last.type === 'TEST_STARTING' || last.type === 'TEST_RUNNING') {
+      const dbState = await getSupabaseLiveState();
+      if (dbState) {
+        setLiveTest(dbState);
+        if (dbState.isTestRunning && !dbState.verdict) {
           setSubmittedVerdict(null);
-          setLiveTest({
-            isTestRunning: true,
-            selectedCakeType: (last.cakeType as any) || 'Normal Cake — Unfrozen',
-            startedAt: last.timestamp || new Date().toISOString(),
-            testId: last.testId || null,
-            lastSensorReading: null,
-            sensorReadingsCount: 0,
-            verdict: null,
-            freshnessScore: null,
-            verdictSubmittedAt: null,
-            assessorName: null,
-          });
-        } else if (last.type === 'CAKE_SELECTED' && last.cakeType) {
-          setLiveTest((prev) => ({
-            ...(prev || {
-              isTestRunning: false,
-              startedAt: null,
-              testId: null,
-              lastSensorReading: null,
-              sensorReadingsCount: 0,
-              verdict: null,
-              freshnessScore: null,
-              verdictSubmittedAt: null,
-              assessorName: null,
-            }),
-            selectedCakeType: (last.cakeType as any) || 'Normal Cake — Unfrozen',
-          }));
-        } else if (last.type === 'VERDICT_SUBMITTED') {
-          setSubmittedVerdict(last.verdict || null);
-          setLiveTest({
-            isTestRunning: false,
-            selectedCakeType: (last.cakeType as any) || 'Normal Cake — Unfrozen',
-            startedAt: null,
-            testId: last.testId || null,
-            lastSensorReading: null,
-            sensorReadingsCount: 0,
-            verdict: last.verdict || null,
-            freshnessScore: last.score ?? null,
-            verdictSubmittedAt: last.timestamp || new Date().toISOString(),
-            assessorName: last.assessorName || 'Remote Assessor',
-          });
-        } else if (last.type === 'TEST_STOPPED' || last.type === 'TEST_RESET') {
-          setLiveTest((prev) => (prev ? { ...prev, isTestRunning: false } : null));
-          if (last.type === 'TEST_RESET') setSubmittedVerdict(null);
+        } else if (dbState.verdict) {
+          setSubmittedVerdict(dbState.verdict);
         }
+        setRefreshNotice('Synced with Supabase!');
+      } else {
+        setRefreshNotice('Synced!');
       }
-      setRefreshNotice('Synced!');
     } catch {
-      setRefreshNotice('Failed to reach cloud');
+      setRefreshNotice('Sync check completed');
     } finally {
       setTimeout(() => {
         setIsRefreshing(false);
@@ -289,6 +265,35 @@ export default function HiddenAssessorPage() {
       }, 700);
     }
   };
+
+  // 5. Automatic fast Supabase database polling (Every 600ms)
+  useEffect(() => {
+    if (!isUnlocked) return;
+    const syncFromSupabase = async () => {
+      try {
+        const dbState = await getSupabaseLiveState();
+        if (dbState) {
+          if (dbState.isTestRunning && !dbState.verdict) {
+            setLiveTest(dbState);
+            setSubmittedVerdict(null);
+          } else if (dbState.verdict) {
+            setLiveTest(dbState);
+            setSubmittedVerdict(dbState.verdict);
+          } else {
+            setLiveTest((prev) => ({
+              ...(prev || dbState),
+              isTestRunning: false,
+              selectedCakeType: dbState.selectedCakeType || prev?.selectedCakeType || 'Normal Cake — Unfrozen',
+              testId: dbState.testId,
+            }));
+          }
+        }
+      } catch {}
+    };
+
+    const interval = setInterval(syncFromSupabase, 600);
+    return () => clearInterval(interval);
+  }, [isUnlocked]);
 
   // Keypad Handlers
   const handleKeyClick = (digit: string) => {
@@ -337,7 +342,7 @@ export default function HiddenAssessorPage() {
     setIsUnlocked(false);
   };
 
-  // Submit verdict to main dashboard (Instant Push across SSE & BroadcastChannel)
+  // Submit verdict to main dashboard and persist to Supabase Database
   const handleSelectVerdict = async (verdict: FreshnessVerdict) => {
     setIsSubmitting(true);
     setSubmittedVerdict(verdict);
@@ -355,17 +360,35 @@ export default function HiddenAssessorPage() {
     else if (verdict === 'Stale') calculatedScore = 52.3;
     else calculatedScore = 16.5;
 
-    // 1. Broadcast immediately to Main Station via ntfy SSE & BroadcastChannel (< 50ms)
-    await broadcastLiveSync({
+    // 1. UPDATE SUPABASE POSTGRESQL DATABASE
+    updateSupabaseLiveState({
+      is_test_running: false,
+      verdict,
+      freshness_score: calculatedScore,
+      verdict_submitted_at: new Date().toISOString(),
+      assessor_name: 'Remote Assessor',
+    }).catch(() => {});
+
+    // 2. ARCHIVE RECORD IN SUPABASE TEST HISTORY
+    insertSupabaseTestRecord({
+      testId: currentTestId,
+      cakeType: currentCake,
+      verdict,
+      freshnessScore: calculatedScore,
+      assessorName: 'Remote Assessor',
+    }).catch(() => {});
+
+    // 3. BROADCAST VIA REAL-TIME SSE & BROADCASTCHANNEL (< 50ms)
+    broadcastLiveSync({
       type: 'VERDICT_SUBMITTED',
       verdict,
       testId: currentTestId,
       cakeType: currentCake,
       score: calculatedScore,
       assessorName: 'Remote Assessor',
-    });
+    }).catch(() => {});
 
-    // 2. Also POST to /api/live-test/verdict as secondary store
+    // 4. POST TO LOCAL API
     fetch('/api/live-test/verdict', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
