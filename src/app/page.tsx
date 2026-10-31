@@ -162,6 +162,8 @@ export default function MainDashboardPage() {
             return;
           }
 
+          activeTestIdRef.current = null;
+          setActiveTestId(null);
           setIsLocalRunning(false);
           // IMMEDIATELY HALT HARDWARE SAMPLING
           esp32Wireless.sendStopTest();
@@ -173,7 +175,7 @@ export default function MainDashboardPage() {
           const concludedState: LiveTestState = {
             selectedCakeType: (msg.cakeType as any) || selectedCake,
             startedAt: new Date().toISOString(),
-            testId: msg.testId || activeTestIdRef.current || `TEST-${Date.now().toString().slice(-6)}`,
+            testId: msg.testId || `TEST-${Date.now().toString().slice(-6)}`,
             lastSensorReading: null,
             sensorReadingsCount: 1,
             isTestRunning: false,
@@ -184,14 +186,12 @@ export default function MainDashboardPage() {
           };
           setLiveTest(concludedState);
           recordRecentTest(concludedState);
-          activeTestIdRef.current = null;
         } else if (msg.type === 'TEST_STOPPED' || msg.type === 'TEST_RESET') {
+          activeTestIdRef.current = null;
+          setActiveTestId(null);
           setIsLocalRunning(false);
-          esp32Wireless.sendStopTest();
           if (msg.type === 'TEST_RESET') {
             setLiveTest(null);
-            setActiveTestId(null);
-            activeTestIdRef.current = null;
             setGasHistory([24.2, 24.5]);
           }
         }
@@ -281,12 +281,13 @@ export default function MainDashboardPage() {
         // STRICT MATCH: Only finalize if it matches the current active test ID
         const isCurrentActive = Boolean(activeTestIdRef.current && supabaseState.testId === activeTestIdRef.current);
         if (isCurrentActive) {
+          activeTestIdRef.current = null;
+          setActiveTestId(null);
           setIsLocalRunning(false);
           // IMMEDIATELY HALT ESP32 SENSOR SAMPLING
           esp32Wireless.sendStopTest();
           setLiveTest(supabaseState);
           recordRecentTest(supabaseState);
-          activeTestIdRef.current = null;
         }
       }
     } catch {

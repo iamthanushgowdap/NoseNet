@@ -38,6 +38,7 @@ export class ESP32WirelessManager {
 
   // Active testing lock - strictly gates sensor ingestion
   private isTestActive = false;
+  private gattBusy = false;
 
   // Listeners
   private statusListeners = new Set<WirelessStatusListener>();
@@ -188,19 +189,35 @@ export class ESP32WirelessManager {
     this.setStatus('disconnected', 'Wireless disconnected', 'none');
   }
 
+  // Safe serialized BLE writer ensuring no concurrent GATT operations occur
+  private async writeBleCommand(command: string): Promise<boolean> {
+    if (this.connectionType !== 'bluetooth' || !this.rxCharacteristic) return false;
+    if (this.gattBusy) {
+      return false;
+    }
+    this.gattBusy = true;
+    try {
+      const encoder = new TextEncoder();
+      await this.rxCharacteristic.writeValue(encoder.encode(command));
+      return true;
+    } catch (err: any) {
+      if (err?.name !== 'NetworkError') {
+        console.warn('BLE write warning:', err);
+      }
+      return false;
+    } finally {
+      this.gattBusy = false;
+    }
+  }
+
   // --- 3. TRIGGER MICROCONTROLLER TO RUN SENSOR TEST ---
   public async sendTriggerRunTest(cakeType: string, testId?: string): Promise<boolean> {
     this.isTestActive = true;
     const command = `RUN_TEST:${cakeType}\n`;
 
     // 1. If connected via Bluetooth
-    if (this.connectionType === 'bluetooth' && this.rxCharacteristic) {
-      try {
-        const encoder = new TextEncoder();
-        await this.rxCharacteristic.writeValue(encoder.encode(command));
-      } catch (err) {
-        console.error('Failed to send BLE command:', err);
-      }
+    if (this.connectionType === 'bluetooth') {
+      await this.writeBleCommand(command);
     }
 
     // 2. If connected via Wi-Fi
@@ -213,20 +230,11 @@ export class ESP32WirelessManager {
           mode: 'cors',
         });
       } catch (err) {
-        console.error('Failed to send Wi-Fi command:', err);
+        console.warn('Failed to send Wi-Fi command:', err);
       }
     }
 
-    // 3. Local cross-tab broadcast via BroadcastChannel
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      try {
-        const bc = new BroadcastChannel('nosenet_live_channel');
-        bc.postMessage({ type: 'TEST_STARTED', cakeType, testId });
-        bc.close();
-      } catch {}
-    }
-
-    // 4. Update server state
+    // 3. Update server state
     try {
       await fetch('/api/live-test', {
         method: 'POST',
@@ -234,8 +242,7 @@ export class ESP32WirelessManager {
         body: JSON.stringify({ action: 'start', cakeType, testId }),
       });
       return true;
-    } catch (e) {
-      console.error(e);
+    } catch {
       return false;
     }
   }
@@ -244,14 +251,9 @@ export class ESP32WirelessManager {
     this.isTestActive = false;
     const command = `STOP_TEST\n`;
 
-    // 1. Send stop over Bluetooth
-    if (this.connectionType === 'bluetooth' && this.rxCharacteristic) {
-      try {
-        const encoder = new TextEncoder();
-        await this.rxCharacteristic.writeValue(encoder.encode(command));
-      } catch (err) {
-        console.error('Failed to send BLE stop command:', err);
-      }
+    // 1. Send stop over Bluetooth (Serialized GATT write)
+    if (this.connectionType === 'bluetooth') {
+      await this.writeBleCommand(command);
     }
 
     // 2. Send stop over Wi-Fi
@@ -264,20 +266,11 @@ export class ESP32WirelessManager {
           mode: 'cors',
         });
       } catch (err) {
-        console.error('Failed to send Wi-Fi stop command:', err);
+        console.warn('Failed to send Wi-Fi stop command:', err);
       }
     }
 
-    // 3. Broadcast stop locally
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      try {
-        const bc = new BroadcastChannel('nosenet_live_channel');
-        bc.postMessage({ type: 'TEST_STOPPED' });
-        bc.close();
-      } catch {}
-    }
-
-    // 4. Notify server to stop active test
+    // 3. Notify server to stop active test
     try {
       await fetch('/api/live-test', {
         method: 'POST',
@@ -285,8 +278,7 @@ export class ESP32WirelessManager {
         body: JSON.stringify({ action: 'stop' }),
       });
       return true;
-    } catch (e) {
-      console.error(e);
+    } catch {
       return false;
     }
   }
