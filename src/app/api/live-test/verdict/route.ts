@@ -15,7 +15,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const updated = liveTestStore.submitVerdict(
+    const updated = await liveTestStore.submitVerdictAsync(
       verdict as FreshnessVerdict,
       assessorName || 'Phone Assessor',
       typeof score === 'number' ? score : undefined,

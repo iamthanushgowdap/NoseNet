@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { liveTestStore, CakeType } from '@/lib/server/live-test-store';
 
-export async function GET() {
+export async function GET(request: Request) {
   const state = await liveTestStore.getSyncedState();
-  return NextResponse.json(state);
+  return NextResponse.json(state, {
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    },
+  });
 }
 
 export async function POST(request: Request) {
@@ -16,17 +20,17 @@ export async function POST(request: Request) {
       if (!cakeType) {
         return NextResponse.json({ error: 'cakeType is required' }, { status: 400 });
       }
-      const updated = liveTestStore.startTest(cakeType, body.testId);
+      const updated = await liveTestStore.startTestAsync(cakeType, body.testId);
       return NextResponse.json(updated);
     }
 
     if (action === 'stop') {
-      const updated = liveTestStore.stopTest();
+      const updated = await liveTestStore.stopTestAsync();
       return NextResponse.json(updated);
     }
 
     if (action === 'reset') {
-      const updated = liveTestStore.resetTest();
+      const updated = await liveTestStore.resetTestAsync();
       return NextResponse.json(updated);
     }
 

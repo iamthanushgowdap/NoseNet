@@ -26,6 +26,7 @@ import {
   WirelessConnectionType,
 } from '@/lib/wireless/esp32-wireless';
 import { CakeType, FreshnessVerdict, LiveTestState } from '@/lib/server/live-test-store';
+import { directCloudPush, directCloudFetch } from '@/lib/sync/live-sync';
 import { SplashLogin } from '@/components/auth/splash-login';
 import { SensorResponseSparkline } from '@/components/dashboard/sensor-response-sparkline';
 import { RecentTestsLog, RecentTestItem } from '@/components/dashboard/recent-tests-log';
@@ -239,32 +240,41 @@ export default function MainDashboardPage() {
     };
   }, [activeTestId, isLocalRunning, liveTest?.verdict, liveTest?.testId, selectedCake]);
 
-  // Poll live test state from server every 1s for remote assessor verdict
+  // Poll live test state with ultra-fast dual-channel fetch (Direct Cloud + API fallback)
   const pollLiveState = async () => {
     try {
-      const res = await fetch('/api/live-test');
-      if (res.ok) {
-        const data: LiveTestState = await res.json();
+      // 1. Direct cloud fetch (fastest path, ~300ms, bypasses serverless cold start)
+      let data: Partial<LiveTestState> | null = (await directCloudFetch()) as any;
 
-        // 1. If an assessor verdict has been recorded FOR OUR ACTIVE TEST ID, conclude test!
-        if (data.verdict && activeTestId && data.testId === activeTestId) {
+      // 2. Fallback to API route
+      if (!data) {
+        const res = await fetch('/api/live-test', { cache: 'no-store' });
+        if (res.ok) {
+          data = await res.json();
+        }
+      }
+
+      if (data && data.verdict) {
+        // Conclude immediately if verdict is for active test ID OR if test is actively running
+        const isCurrentTest = !activeTestId || data.testId === activeTestId || isLocalRunning;
+        if (isCurrentTest) {
           setIsLocalRunning(false);
           esp32Wireless.sendStopTest();
-          setLiveTest(data);
-          recordRecentTest(data);
+          const concludedState: LiveTestState = {
+            isTestRunning: false,
+            selectedCakeType: (data.selectedCakeType as any) || selectedCake,
+            startedAt: data.startedAt || new Date().toISOString(),
+            testId: data.testId || activeTestId,
+            lastSensorReading: null,
+            sensorReadingsCount: 1,
+            verdict: data.verdict as any,
+            freshnessScore: data.freshnessScore ?? 85.0,
+            verdictSubmittedAt: data.verdictSubmittedAt || new Date().toISOString(),
+            assessorName: data.assessorName || 'Remote Assessor',
+          };
+          setLiveTest(concludedState);
+          recordRecentTest(concludedState);
           return;
-        }
-
-        // 2. If locally running, keep the active test running stably (Ignore older test verdicts)
-        if (isLocalRunning) {
-          // If server reports the test was stopped or updated by remote assessor
-          if (data.verdict && data.testId === activeTestId) {
-            setIsLocalRunning(false);
-            esp32Wireless.sendStopTest();
-            setLiveTest(data);
-            recordRecentTest(data);
-            return;
-          }
         }
       }
     } catch {
@@ -277,7 +287,7 @@ export default function MainDashboardPage() {
     if (liveTest?.verdict && !isLocalRunning) return;
 
     pollLiveState();
-    const interval = setInterval(pollLiveState, 1000);
+    const interval = setInterval(pollLiveState, 400);
     return () => clearInterval(interval);
   }, [activeTestId, isLocalRunning, liveTest?.verdict, selectedCake]);
 
@@ -315,7 +325,18 @@ export default function MainDashboardPage() {
       } catch {}
     }
 
-    // 3. INITIALIZE SERVER STORE WITH NEW TEST ID
+    // 3. IMMEDIATE DIRECT CLOUD PUSH (Ensures phone assessor gets live alert instantly)
+    directCloudPush({
+      isTestRunning: true,
+      selectedCakeType: selectedCake,
+      testId: newTestId,
+      verdict: null,
+      freshnessScore: null,
+      startedAt: new Date().toISOString(),
+      assessorName: null,
+    });
+
+    // 4. INITIALIZE SERVER STORE WITH NEW TEST ID
     fetch('/api/live-test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -363,6 +384,7 @@ export default function MainDashboardPage() {
     setCalibrationCount(null);
     setIsLocalRunning(false);
     setActiveTestId(null);
+    directCloudPush({ isTestRunning: false, verdict: null });
     try {
       await esp32Wireless.sendStopTest();
     } catch (e) {
@@ -382,6 +404,7 @@ export default function MainDashboardPage() {
     setActiveTestId(null);
     setLiveTest(null);
     setGasHistory([24.2, 24.5]);
+    directCloudPush({ isTestRunning: false, testId: null, verdict: null, freshnessScore: null });
     try {
       await esp32Wireless.sendStopTest();
       if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {

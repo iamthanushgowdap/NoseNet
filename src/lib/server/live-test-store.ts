@@ -1,4 +1,6 @@
 // In-memory + cloud-bridged live test store for instant cross-device and cross-lambda synchronization
+import { directCloudPush, directCloudFetch, CloudLiveState } from '@/lib/sync/live-sync';
+
 export type CakeType =
   | 'Normal Cake — Frozen'
   | 'Normal Cake — Unfrozen'
@@ -34,49 +36,17 @@ declare global {
   var __liveTestStoreInstance: LiveTestStore | undefined;
 }
 
-const CLOUD_SYNC_URL = 'https://api.restful-api.dev/objects/ff808181a09d98f701a18f237fcd6a39';
-
 async function pushStateToCloud(state: LiveTestState): Promise<void> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 900);
-    await fetch(CLOUD_SYNC_URL, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'NoseNet_State',
-        data: {
-          isTestRunning: state.isTestRunning,
-          selectedCakeType: state.selectedCakeType,
-          startedAt: state.startedAt,
-          testId: state.testId,
-          verdict: state.verdict,
-          freshnessScore: state.freshnessScore,
-          verdictSubmittedAt: state.verdictSubmittedAt,
-          assessorName: state.assessorName,
-        },
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-  } catch {
-    // Non-blocking fallback
-  }
-}
-
-async function fetchStateFromCloud(): Promise<Partial<LiveTestState> | null> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 900);
-    const res = await fetch(CLOUD_SYNC_URL, { signal: controller.signal });
-    clearTimeout(timer);
-    if (!res.ok) return null;
-    const json = await res.json();
-    if (json && json.data && typeof json.data === 'object') {
-      return json.data;
-    }
-  } catch {}
-  return null;
+  await directCloudPush({
+    isTestRunning: state.isTestRunning,
+    selectedCakeType: state.selectedCakeType,
+    startedAt: state.startedAt,
+    testId: state.testId,
+    verdict: state.verdict,
+    freshnessScore: state.freshnessScore,
+    verdictSubmittedAt: state.verdictSubmittedAt,
+    assessorName: state.assessorName,
+  });
 }
 
 class LiveTestStore {
@@ -108,10 +78,10 @@ class LiveTestStore {
 
   public async getSyncedState(): Promise<LiveTestState> {
     const now = Date.now();
-    // Cache for 500ms to eliminate redundant network roundtrips
-    if (now - this.lastCloudSyncTime > 500) {
+    // Cache for 400ms to eliminate redundant network roundtrips during tight polling
+    if (now - this.lastCloudSyncTime > 400) {
       this.lastCloudSyncTime = now;
-      const cloudData = await fetchStateFromCloud();
+      const cloudData = await directCloudFetch();
       if (cloudData) {
         if (cloudData.testId !== undefined) this.state.testId = cloudData.testId ?? null;
         if (cloudData.isTestRunning !== undefined) this.state.isTestRunning = Boolean(cloudData.isTestRunning);
@@ -123,6 +93,25 @@ class LiveTestStore {
         this.state.assessorName = cloudData.assessorName ?? null;
       }
     }
+    return this.getState();
+  }
+
+  public async startTestAsync(cakeType: CakeType, customTestId?: string): Promise<LiveTestState> {
+    const testId = customTestId || `TEST-${Math.floor(100000 + Math.random() * 900000)}`;
+    this.state = {
+      isTestRunning: true,
+      selectedCakeType: cakeType,
+      startedAt: new Date().toISOString(),
+      testId,
+      lastSensorReading: null,
+      sensorReadingsCount: 0,
+      verdict: null,
+      freshnessScore: null,
+      verdictSubmittedAt: null,
+      assessorName: null,
+    };
+    this.lastCloudSyncTime = Date.now();
+    await pushStateToCloud(this.state);
     return this.getState();
   }
 
@@ -141,14 +130,39 @@ class LiveTestStore {
       assessorName: null,
     };
     this.lastCloudSyncTime = Date.now();
-    pushStateToCloud(this.state);
+    pushStateToCloud(this.state).catch(() => {});
+    return this.getState();
+  }
+
+  public async stopTestAsync(): Promise<LiveTestState> {
+    this.state.isTestRunning = false;
+    this.lastCloudSyncTime = Date.now();
+    await pushStateToCloud(this.state);
     return this.getState();
   }
 
   public stopTest(): LiveTestState {
     this.state.isTestRunning = false;
     this.lastCloudSyncTime = Date.now();
-    pushStateToCloud(this.state);
+    pushStateToCloud(this.state).catch(() => {});
+    return this.getState();
+  }
+
+  public async resetTestAsync(): Promise<LiveTestState> {
+    this.state = {
+      isTestRunning: false,
+      selectedCakeType: null,
+      startedAt: null,
+      testId: null,
+      lastSensorReading: null,
+      sensorReadingsCount: 0,
+      verdict: null,
+      freshnessScore: null,
+      verdictSubmittedAt: null,
+      assessorName: null,
+    };
+    this.lastCloudSyncTime = Date.now();
+    await pushStateToCloud(this.state);
     return this.getState();
   }
 
@@ -166,7 +180,7 @@ class LiveTestStore {
       assessorName: null,
     };
     this.lastCloudSyncTime = Date.now();
-    pushStateToCloud(this.state);
+    pushStateToCloud(this.state).catch(() => {});
     return this.getState();
   }
 
@@ -190,12 +204,12 @@ class LiveTestStore {
     return this.getState();
   }
 
-  public submitVerdict(
+  public async submitVerdictAsync(
     verdict: FreshnessVerdict,
     assessorName = 'IoT Verification',
     score?: number,
     targetTestId?: string
-  ): LiveTestState {
+  ): Promise<LiveTestState> {
     if (targetTestId) {
       this.state.testId = targetTestId;
     }
@@ -223,7 +237,42 @@ class LiveTestStore {
     }
 
     this.lastCloudSyncTime = Date.now();
-    pushStateToCloud(this.state);
+    await pushStateToCloud(this.state);
+    return this.getState();
+  }
+
+  public submitVerdict(
+    verdict: FreshnessVerdict,
+    assessorName = 'IoT Verification',
+    score?: number,
+    targetTestId?: string
+  ): LiveTestState {
+    if (targetTestId) {
+      this.state.testId = targetTestId;
+    }
+    this.state.verdict = verdict;
+    this.state.isTestRunning = false;
+    this.state.verdictSubmittedAt = new Date().toISOString();
+    this.state.assessorName = assessorName;
+
+    if (score !== undefined && score !== null) {
+      this.state.freshnessScore = score;
+    } else {
+      const gas = this.state.lastSensorReading?.gasResistanceKohm || 30;
+      const gasOffset = (gas % 3);
+      if (verdict === 'Fresh') {
+        this.state.freshnessScore = Number((93.5 + gasOffset * 1.5).toFixed(1));
+      } else if (verdict === 'Fairly Fresh') {
+        this.state.freshnessScore = Number((73.2 + gasOffset * 2.1).toFixed(1));
+      } else if (verdict === 'Stale') {
+        this.state.freshnessScore = Number((51.4 + gasOffset * 2.2).toFixed(1));
+      } else {
+        this.state.freshnessScore = Number((15.8 + gasOffset * 2.4).toFixed(1));
+      }
+    }
+
+    this.lastCloudSyncTime = Date.now();
+    pushStateToCloud(this.state).catch(() => {});
     return this.getState();
   }
 }
