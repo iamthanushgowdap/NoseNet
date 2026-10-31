@@ -18,7 +18,6 @@ import {
   Activity,
   Layers,
   Lock,
-  FileSpreadsheet,
   Clock,
 } from 'lucide-react';
 import {
@@ -37,7 +36,6 @@ import { SplashLogin } from '@/components/auth/splash-login';
 import { SensorResponseSparkline } from '@/components/dashboard/sensor-response-sparkline';
 import { RecentTestsLog, RecentTestItem } from '@/components/dashboard/recent-tests-log';
 import { ArchitecturalOutputBento } from '@/components/dashboard/architectural-output-bento';
-import { LongitudinalDatasetModal } from '@/components/dashboard/longitudinal-dataset-modal';
 
 const CAKE_OPTIONS: { id: CakeType; title: string; category: string; condition: string }[] = [
   {
@@ -103,7 +101,6 @@ export default function MainDashboardPage() {
 
   // Feature 5: Recent Tests Log
   const [recentTests, setRecentTests] = useState<RecentTestItem[]>([]);
-  const [isDatasetModalOpen, setIsDatasetModalOpen] = useState<boolean>(false);
 
   // Helper to record finalized test to recent list
   const recordRecentTest = (data: LiveTestState, customDuration?: number) => {
@@ -514,30 +511,16 @@ export default function MainDashboardPage() {
       {/* 1. Project Title & Microcontroller Link */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-neutral-800">
         <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-              NoseNet
-            </h1>
-            <span className="text-[11px] font-mono uppercase px-2.5 py-0.5 rounded bg-neutral-900 text-white border border-neutral-700">
-              College Capstone
-            </span>
-          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+            NoseNet Model
+          </h1>
           <p className="text-xs text-neutral-400 mt-1">
             IoT-Based Cake Freshness & Adulteration Testing Platform • ESP32 & SmartElex BME688
           </p>
         </div>
 
-        {/* Microcontroller Connection Control & Dataset Access */}
+        {/* Microcontroller Connection Control */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
-          <button
-            onClick={() => setIsDatasetModalOpen(true)}
-            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700 text-xs font-mono font-semibold transition cursor-pointer shadow-sm"
-            title="Inspect 7-Day Complete Longitudinal Dataset"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-            <span>7-Day Dataset (52 Runs)</span>
-          </button>
-
           {isConnected ? (
             <div className="flex items-center justify-between sm:justify-start gap-2 w-full sm:w-auto">
               <span className="inline-flex items-center gap-1.5 text-xs font-mono px-3 py-2 rounded-lg bg-emerald-950 text-emerald-400 border border-emerald-700 font-bold">
@@ -829,12 +812,6 @@ export default function MainDashboardPage() {
 
       {/* Feature 5: Recent Specimen Test History Log */}
       <RecentTestsLog tests={recentTests} onClear={handleClearRecentTests} />
-
-      {/* 7-Day Complete Longitudinal Dataset Modal */}
-      <LongitudinalDatasetModal
-        isOpen={isDatasetModalOpen}
-        onClose={() => setIsDatasetModalOpen(false)}
-      />
     </div>
   );
 }
