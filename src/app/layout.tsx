@@ -22,6 +22,16 @@ export const metadata: Metadata = {
   title: 'NoseNet — IoT Cake Freshness and Adulteration Testing System',
   description:
     'IoT-based cake freshness and adulteration detection device with ESP32 & SmartElex BME688.',
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/icon-32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon.ico', sizes: 'any' },
+    ],
+    apple: [
+      { url: '/apple-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
