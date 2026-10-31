@@ -64,4 +64,12 @@ describe('UI Components & Responsive Assessor Controls', () => {
     expect(screen.getByText('42')).toBeInTheDocument();
     expect(screen.getByText('Cake specimen count')).toBeInTheDocument();
   });
+
+  it('exports valid NoseNet brand logo SVG markup for splash reveal', async () => {
+    const { MARK_NOSENET } = await import('@/components/ui/glass-icon-reveal');
+    expect(MARK_NOSENET).toContain('<svg');
+    expect(MARK_NOSENET).toContain('viewBox="0 0 24 24"');
+    expect(MARK_NOSENET).toContain('stroke="currentColor"');
+    expect(MARK_NOSENET).toContain('M22 12h-2.48');
+  });
 });

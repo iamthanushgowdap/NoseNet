@@ -100,11 +100,13 @@ export function SplashLogin({ onSuccess }: SplashLoginProps) {
             <GlassReveal21st
               look="dark"
               background="#000000"
-              plateColor="#06080d"
-              logoColor="#ffffff"
+              plateColor="#ffffff"
+              logoColor="#000000"
+              iconPlate={true}
+              keepPlate={true}
               tileSize={256}
-              logoScale={0.7}
-              finalScale={0.85}
+              logoScale={0.62}
+              finalScale={0.82}
               loop={false}
               className="w-full h-full rounded-3xl"
             />
