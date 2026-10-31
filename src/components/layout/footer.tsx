@@ -14,11 +14,11 @@ export function Footer() {
 
   return (
     <HalftoneWordmarkFooter
-      wordmark="NoseNet"
+      wordmark="NOSENET"
       label="NoseNet Model"
       meta="©2026 · APSCE Bangalore • ESP32 & BME688"
       preset="night"
-      height="480px"
+      height="clamp(320px, 42vh, 460px)"
     />
   );
 }

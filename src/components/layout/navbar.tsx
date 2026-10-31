@@ -54,9 +54,9 @@ export function Navbar() {
   return (
     <>
       <header className="sticky top-0 z-40 w-full border-b border-neutral-800 bg-black text-white select-none">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+        <div className="max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2 sm:gap-3">
           {/* Brand with 10-Tap Trigger */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
             <button
               type="button"
               onClick={handleLogoTap}
@@ -71,12 +71,12 @@ export function Navbar() {
               )}
             </button>
 
-            <Link href="/" className="flex flex-col">
+            <Link href="/" className="flex flex-col shrink-0">
               <div className="flex items-center gap-1.5 sm:gap-2">
-                <span className="font-extrabold text-base tracking-tight text-white">
+                <span className="font-extrabold text-base sm:text-lg tracking-tight text-white">
                   NoseNet
                 </span>
-                <span className="text-[9px] sm:text-[10px] font-mono uppercase bg-neutral-900 text-neutral-300 px-1.5 py-0.5 rounded border border-neutral-700">
+                <span className="hidden sm:inline-block text-[9px] sm:text-[10px] font-mono uppercase bg-neutral-900 text-neutral-300 px-1.5 py-0.5 rounded border border-neutral-700 whitespace-nowrap">
                   ESP32 • BME688
                 </span>
               </div>
@@ -87,10 +87,10 @@ export function Navbar() {
           </div>
 
           {/* Right Status Badge & Lock Control */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-mono px-2.5 sm:px-3 py-1 rounded-full bg-neutral-900 text-neutral-300 border border-neutral-800 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-mono px-2 sm:px-3 py-1 rounded-full bg-neutral-900 text-neutral-300 border border-neutral-800 whitespace-nowrap shrink-0">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="hidden xs:inline">Hardware</span> Monitoring Station
+              <span className="hidden sm:inline">Monitoring </span>Station
             </span>
 
             {/* Lock / Log Out Button */}
