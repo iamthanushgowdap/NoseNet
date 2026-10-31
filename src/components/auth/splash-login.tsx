@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Activity, Lock, User, ArrowRight, ShieldCheck, Sparkles, KeyRound } from 'lucide-react';
 import { AssessorPinModal } from './assessor-pin-modal';
+import { GlassReveal21st } from '@/components/ui/glass-icon-reveal';
 
 interface SplashLoginProps {
   onSuccess: () => void;
@@ -21,10 +22,10 @@ export function SplashLogin({ onSuccess }: SplashLoginProps) {
   const [showAssessorModal, setShowAssessorModal] = useState(false);
 
   useEffect(() => {
-    // Show splash animation for 1.2s on first load
+    // Show splash animation for 3.2s on first load (allows glass reveal animation to complete)
     const timer = setTimeout(() => {
       setShowSplashAnimation(false);
-    }, 1200);
+    }, 3200);
     return () => clearTimeout(timer);
   }, []);
 
@@ -88,20 +89,34 @@ export function SplashLogin({ onSuccess }: SplashLoginProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black text-white select-none overflow-y-auto">
-      {/* 1. Initial Splash Animation Phase */}
+      {/* 1. Initial Splash Animation Phase: WebGL2 Glass Icon Reveal */}
       {showSplashAnimation ? (
-        <div className="flex flex-col items-center justify-center space-y-6 animate-pulse">
-          <div className="w-20 h-20 rounded-3xl bg-white text-black flex items-center justify-center shadow-2xl scale-105 transition">
-            <Activity className="w-10 h-10 text-black animate-spin" />
+        <div
+          onClick={() => setShowSplashAnimation(false)}
+          className="flex flex-col items-center justify-center space-y-4 max-w-sm mx-auto text-center cursor-pointer select-none"
+          title="Tap anywhere to enter station directly"
+        >
+          <div className="w-64 h-64 sm:w-72 sm:h-72 relative flex items-center justify-center">
+            <GlassReveal21st
+              look="dark"
+              background="#000000"
+              plateColor="#06080d"
+              logoColor="#ffffff"
+              tileSize={256}
+              logoScale={0.7}
+              finalScale={0.85}
+              loop={false}
+              className="w-full h-full rounded-3xl"
+            />
           </div>
           <div className="text-center space-y-1.5">
             <h1 className="text-3xl font-black tracking-tight text-white">NoseNet</h1>
             <p className="text-xs font-mono uppercase tracking-widest text-neutral-400">
               Electronic Nose System Initializing...
             </p>
-          </div>
-          <div className="w-48 h-1 bg-neutral-900 rounded-full overflow-hidden">
-            <div className="h-full bg-white animate-pulse w-3/4 rounded-full" />
+            <span className="text-[11px] font-mono text-neutral-600 block pt-1 hover:text-neutral-400 transition">
+              Tap anywhere to skip →
+            </span>
           </div>
         </div>
       ) : (
