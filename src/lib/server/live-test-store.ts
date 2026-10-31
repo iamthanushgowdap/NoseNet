@@ -33,6 +33,7 @@ export interface LiveTestState {
   sensorReadingsCount: number;
   verdict: FreshnessVerdict | null;
   freshnessScore: number | null;
+  durationSeconds?: number | null;
   verdictSubmittedAt: string | null;
   assessorName: string | null;
 }
@@ -244,7 +245,8 @@ class LiveTestStore {
     verdict: FreshnessVerdict,
     assessorName = 'IoT Verification',
     score?: number,
-    targetTestId?: string
+    targetTestId?: string,
+    durationSeconds?: number
   ): Promise<LiveTestState> {
     if (targetTestId) {
       this.state.testId = targetTestId;
@@ -253,6 +255,9 @@ class LiveTestStore {
     this.state.isTestRunning = false;
     this.state.verdictSubmittedAt = new Date().toISOString();
     this.state.assessorName = assessorName;
+    if (durationSeconds !== undefined && durationSeconds !== null) {
+      this.state.durationSeconds = durationSeconds;
+    }
 
     if (score !== undefined && score !== null) {
       this.state.freshnessScore = score;

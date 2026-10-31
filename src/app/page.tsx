@@ -19,6 +19,7 @@ import {
   Layers,
   Lock,
   FileSpreadsheet,
+  Clock,
 } from 'lucide-react';
 import {
   esp32Wireless,
@@ -93,6 +94,10 @@ export default function MainDashboardPage() {
   const [isCalibrating, setIsCalibrating] = useState<boolean>(false);
   const [calibrationCount, setCalibrationCount] = useState<number | null>(null);
 
+  // Active Headspace Sampling Elapsed Seconds Counter (1s, 2s, 3s... after 5s buffer)
+  const [elapsedSamplingSeconds, setElapsedSamplingSeconds] = useState<number>(0);
+  const samplingStartMsRef = useRef<number | null>(null);
+
   // Feature 2: Sensor Response Sparkline Points
   const [gasHistory, setGasHistory] = useState<number[]>([24.2, 24.5, 24.8]);
 
@@ -101,7 +106,7 @@ export default function MainDashboardPage() {
   const [isDatasetModalOpen, setIsDatasetModalOpen] = useState<boolean>(false);
 
   // Helper to record finalized test to recent list
-  const recordRecentTest = (data: LiveTestState) => {
+  const recordRecentTest = (data: LiveTestState, customDuration?: number) => {
     if (!data.verdict || !data.testId) return;
     const finalVerdict: FreshnessVerdict = data.verdict;
     const currentTestId: string = data.testId;
@@ -112,6 +117,7 @@ export default function MainDashboardPage() {
     const finalScore = data.freshnessScore || (
       finalVerdict === 'Fresh' ? 94.6 : finalVerdict === 'Fairly Fresh' ? 74.2 : finalVerdict === 'Stale' ? 52.8 : 18.4
     );
+    const duration = customDuration ?? data.durationSeconds ?? (elapsedSamplingSeconds > 0 ? elapsedSamplingSeconds : 30);
 
     setRecentTests((prev) => {
       if (prev.some((t) => t.id === currentTestId)) return prev;
@@ -124,6 +130,7 @@ export default function MainDashboardPage() {
         humidity: finalHum,
         verdict: finalVerdict,
         score: finalScore,
+        durationSeconds: duration,
       };
       const updated = [newItem, ...prev].slice(0, 5);
       if (typeof window !== 'undefined') {
@@ -165,9 +172,11 @@ export default function MainDashboardPage() {
           activeTestIdRef.current = null;
           setActiveTestId(null);
           setIsLocalRunning(false);
+          samplingStartMsRef.current = null;
           // IMMEDIATELY HALT HARDWARE SAMPLING
           esp32Wireless.sendStopTest();
 
+          const durationSec = msg.durationSeconds ?? (elapsedSamplingSeconds > 0 ? elapsedSamplingSeconds : 30);
           const finalVerdict = msg.verdict;
           const score = msg.score || (
             finalVerdict === 'Fresh' ? 94.6 : finalVerdict === 'Fairly Fresh' ? 74.2 : finalVerdict === 'Stale' ? 52.8 : 18.4
@@ -181,15 +190,18 @@ export default function MainDashboardPage() {
             isTestRunning: false,
             verdict: finalVerdict,
             freshnessScore: score,
+            durationSeconds: durationSec,
             verdictSubmittedAt: new Date().toISOString(),
             assessorName: msg.assessorName || 'Phone Assessor',
           };
           setLiveTest(concludedState);
-          recordRecentTest(concludedState);
+          recordRecentTest(concludedState, durationSec);
         } else if (msg.type === 'TEST_STOPPED' || msg.type === 'TEST_RESET') {
           activeTestIdRef.current = null;
           setActiveTestId(null);
           setIsLocalRunning(false);
+          samplingStartMsRef.current = null;
+          setElapsedSamplingSeconds(0);
           if (msg.type === 'TEST_RESET') {
             setLiveTest(null);
             setGasHistory([24.2, 24.5]);
@@ -284,10 +296,17 @@ export default function MainDashboardPage() {
           activeTestIdRef.current = null;
           setActiveTestId(null);
           setIsLocalRunning(false);
+          samplingStartMsRef.current = null;
           // IMMEDIATELY HALT ESP32 SENSOR SAMPLING
           esp32Wireless.sendStopTest();
-          setLiveTest(supabaseState);
-          recordRecentTest(supabaseState);
+
+          const durationSec = elapsedSamplingSeconds > 0 ? elapsedSamplingSeconds : 30;
+          const fullConcludedState: LiveTestState = {
+            ...supabaseState,
+            durationSeconds: durationSec,
+          };
+          setLiveTest(fullConcludedState);
+          recordRecentTest(fullConcludedState, durationSec);
         }
       }
     } catch {
@@ -303,6 +322,23 @@ export default function MainDashboardPage() {
     const interval = setInterval(pollLiveState, 400);
     return () => clearInterval(interval);
   }, [isLocalRunning, isCalibrating, activeTestId]);
+
+  // Active Sampling Elapsed Seconds Counter (Increments 1s, 2s, 3s... after 5s buffer)
+  useEffect(() => {
+    if (!isLocalRunning) {
+      return;
+    }
+
+    const tick = () => {
+      if (!samplingStartMsRef.current) return;
+      const elapsed = Math.max(1, Math.floor((Date.now() - samplingStartMsRef.current) / 1000) + 1);
+      setElapsedSamplingSeconds(elapsed);
+    };
+
+    tick();
+    const interval = setInterval(tick, 500);
+    return () => clearInterval(interval);
+  }, [isLocalRunning]);
 
   // Handlers for wireless connection
   const handleConnectBluetooth = async () => {
@@ -322,9 +358,12 @@ export default function MainDashboardPage() {
 
     // 1. FULL REFRESH: Assign brand new Test ID and reset previous state completely
     const newTestId = `TEST-${Math.floor(100000 + Math.random() * 900000)}`;
+    const nowIso = new Date().toISOString();
     setActiveTestId(newTestId);
     activeTestIdRef.current = newTestId;
     setIsLocalRunning(false);
+    samplingStartMsRef.current = null;
+    setElapsedSamplingSeconds(0);
     setIsCalibrating(true);
     setCalibrationCount(5);
     setGasHistory([24.2, 24.5]);
@@ -337,7 +376,7 @@ export default function MainDashboardPage() {
       test_id: newTestId,
       verdict: null,
       freshness_score: null,
-      started_at: new Date().toISOString(),
+      started_at: nowIso,
       verdict_submitted_at: null,
       assessor_name: null,
     }).catch(() => {});
@@ -347,6 +386,7 @@ export default function MainDashboardPage() {
       type: 'TEST_STARTING',
       cakeType: selectedCake,
       testId: newTestId,
+      startedAt: nowIso,
     });
 
     // 4. INITIALIZE SERVER STORE WITH NEW TEST ID
@@ -367,16 +407,19 @@ export default function MainDashboardPage() {
         setIsCalibrating(false);
         setIsTriggering(true);
         setIsLocalRunning(true);
+        samplingStartMsRef.current = Date.now();
+        setElapsedSamplingSeconds(1);
 
         setLiveTest({
           isTestRunning: true,
           selectedCakeType: selectedCake,
-          startedAt: new Date().toISOString(),
+          startedAt: nowIso,
           testId: newTestId,
           lastSensorReading: null,
           sensorReadingsCount: 0,
           verdict: null,
           freshnessScore: null,
+          durationSeconds: null,
           verdictSubmittedAt: null,
           assessorName: null,
         });
@@ -385,6 +428,7 @@ export default function MainDashboardPage() {
           type: 'TEST_RUNNING',
           cakeType: selectedCake,
           testId: newTestId,
+          startedAt: nowIso,
         });
 
         try {
@@ -402,6 +446,8 @@ export default function MainDashboardPage() {
     setIsCalibrating(false);
     setCalibrationCount(null);
     setIsLocalRunning(false);
+    samplingStartMsRef.current = null;
+    setElapsedSamplingSeconds(0);
     setActiveTestId(null);
     activeTestIdRef.current = null;
     updateSupabaseLiveState({ is_test_running: false }).catch(() => {});
@@ -424,6 +470,8 @@ export default function MainDashboardPage() {
     setIsCalibrating(false);
     setCalibrationCount(null);
     setIsLocalRunning(false);
+    samplingStartMsRef.current = null;
+    setElapsedSamplingSeconds(0);
     setActiveTestId(null);
     activeTestIdRef.current = null;
     setLiveTest(null);
@@ -592,7 +640,8 @@ export default function MainDashboardPage() {
           {isTesting && (
             <span className="inline-flex items-center gap-1.5 text-xs font-mono px-3 py-1 rounded bg-amber-950 text-amber-300 border border-amber-700 font-bold">
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-              SAMPLING IN PROGRESS
+              <span>SAMPLING: {elapsedSamplingSeconds}s</span>
+              <span className="text-[10px] text-amber-400/80 font-normal">(Target ~30s)</span>
             </span>
           )}
         </div>
@@ -697,6 +746,10 @@ export default function MainDashboardPage() {
                   {activeTestId}
                 </span>
               )}
+              <span className="inline-flex items-center gap-1 text-xs font-mono px-2.5 py-0.5 rounded bg-amber-900/60 text-amber-200 border border-amber-700 font-bold">
+                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                <span>{elapsedSamplingSeconds}s</span>
+              </span>
               <span className="text-xs font-mono text-amber-300/80">
                 Update #{liveTest?.sensorReadingsCount || 1}
               </span>

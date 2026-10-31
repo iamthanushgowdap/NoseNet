@@ -13,6 +13,7 @@ export interface RecentTestItem {
   humidity: number;
   verdict: FreshnessVerdict;
   score?: number;
+  durationSeconds?: number;
 }
 
 interface RecentTestsLogProps {
@@ -88,6 +89,12 @@ export function RecentTestsLog({ tests, onClear }: RecentTestsLogProps) {
                     <td className="py-3 text-neutral-300">
                       R_gas: <span className="text-white font-bold">{item.gasKohm.toFixed(2)} kΩ</span> •{' '}
                       {item.tempC.toFixed(1)}°C
+                      {item.durationSeconds !== undefined && item.durationSeconds !== null && (
+                        <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-900 border border-neutral-700 text-neutral-300">
+                          <Clock className="w-3 h-3 text-emerald-400" />
+                          <span>{item.durationSeconds}s</span>
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 text-right">
                       <span
@@ -142,8 +149,16 @@ export function RecentTestsLog({ tests, onClear }: RecentTestsLogProps) {
                   <span>{item.timestamp}</span>
                 </div>
 
-                <div className="text-[11px] font-mono text-neutral-300">
-                  R_gas: <strong className="text-white">{item.gasKohm.toFixed(2)} kΩ</strong> • {item.tempC.toFixed(1)}°C • {item.humidity.toFixed(0)}%
+                <div className="text-[11px] font-mono text-neutral-300 flex items-center justify-between">
+                  <span>
+                    R_gas: <strong className="text-white">{item.gasKohm.toFixed(2)} kΩ</strong> • {item.tempC.toFixed(1)}°C
+                  </span>
+                  {item.durationSeconds !== undefined && item.durationSeconds !== null && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-900 border border-neutral-700 text-neutral-300">
+                      <Clock className="w-2.5 h-2.5 text-emerald-400" />
+                      <span>{item.durationSeconds}s</span>
+                    </span>
+                  )}
                 </div>
               </div>
             ))}

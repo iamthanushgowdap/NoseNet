@@ -6,6 +6,8 @@ export interface LiveSyncEvent {
   testId?: string | null;
   verdict?: 'Fresh' | 'Fairly Fresh' | 'Stale' | 'Spoiled' | 'Not Fresh' | null;
   score?: number | null;
+  durationSeconds?: number | null;
+  startedAt?: string | null;
   timestamp?: string;
   assessorName?: string | null;
 }

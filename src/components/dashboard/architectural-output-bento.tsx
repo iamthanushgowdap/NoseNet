@@ -19,6 +19,7 @@ import {
   Sliders,
   Radio,
   FileCheck2,
+  Clock,
 } from 'lucide-react';
 import { CakeType, FreshnessVerdict, LiveTestState } from '@/lib/server/live-test-store';
 
@@ -184,6 +185,7 @@ export function ArchitecturalOutputBento({
             readingsCount={liveTest?.sensorReadingsCount || gasHistory.length}
             onReset={onReset}
             testId={testId}
+            durationSeconds={liveTest?.durationSeconds || null}
           />
 
           {/* 2. SUB-BENTO GRID: Telemetry & Flow Architecture */}
@@ -226,6 +228,7 @@ interface FreshnessHeroCardProps {
   readingsCount: number;
   onReset: () => void;
   testId: string;
+  durationSeconds?: number | null;
 }
 
 function FreshnessHeroCard({
@@ -240,6 +243,7 @@ function FreshnessHeroCard({
   readingsCount,
   onReset,
   testId,
+  durationSeconds,
 }: FreshnessHeroCardProps) {
   const isFresh = verdict === 'Fresh';
   const isFairlyFresh = verdict === 'Fairly Fresh';
@@ -263,6 +267,12 @@ function FreshnessHeroCard({
             <span className="px-2.5 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-300">
               SPECIMEN: {selectedCake}
             </span>
+            {durationSeconds !== undefined && durationSeconds !== null && (
+              <span className="px-2.5 py-0.5 rounded bg-neutral-900 border border-neutral-700 text-emerald-300 inline-flex items-center gap-1">
+                <Clock className="w-3 h-3 text-emerald-400" />
+                <span>{durationSeconds}s SAMPLING</span>
+              </span>
+            )}
             <span className="px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400">
               #{testId}
             </span>

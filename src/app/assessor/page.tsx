@@ -10,6 +10,8 @@ import {
   ArrowLeft,
   Radio,
   RefreshCw,
+  Flame,
+  Clock,
 } from 'lucide-react';
 import { FreshnessVerdict, LiveTestState } from '@/lib/server/live-test-store';
 import { broadcastLiveSync } from '@/lib/sync/live-sync';
@@ -33,6 +35,12 @@ export default function HiddenAssessorPage() {
   const [submittedVerdict, setSubmittedVerdict] = useState<FreshnessVerdict | null>(null);
   const [hasVibrated, setHasVibrated] = useState<boolean>(false);
   const lastVibratedTestIdRef = useRef<string | null>(null);
+
+  // Synchronized 5-Second Pre-Heater Buffer & Active Sampling Timers
+  const [bufferRemaining, setBufferRemaining] = useState<number | null>(null);
+  const [elapsedSamplingSeconds, setElapsedSamplingSeconds] = useState<number>(0);
+  const testReceivedTimeRef = useRef<number | null>(null);
+  const recordedDurationRef = useRef<number | null>(null);
 
   // Check PIN unlock on load
   useEffect(() => {
@@ -93,13 +101,16 @@ export default function HiddenAssessorPage() {
             verdict: null,
             freshnessScore: null,
           }));
-        } else if (msg.type === 'NEW_TEST_STARTING' || msg.type === 'TEST_STARTED' || msg.type === 'TEST_STARTING') {
+        } else if (msg.type === 'NEW_TEST_STARTING' || msg.type === 'TEST_STARTED' || msg.type === 'TEST_STARTING' || msg.type === 'TEST_RUNNING') {
           setSubmittedVerdict(null);
           setIsSubmitting(false);
+          const startIso = msg.startedAt || new Date().toISOString();
+          testReceivedTimeRef.current = Date.now();
+          recordedDurationRef.current = null;
           setLiveTest({
             isTestRunning: true,
             selectedCakeType: msg.cakeType || 'Normal Cake — Unfrozen',
-            startedAt: new Date().toISOString(),
+            startedAt: startIso,
             testId: msg.testId || `TEST-${Date.now().toString().slice(-6)}`,
             lastSensorReading: null,
             sensorReadingsCount: 0,
@@ -113,6 +124,9 @@ export default function HiddenAssessorPage() {
           }
         } else if (msg.type === 'TEST_STOPPED' || msg.type === 'TEST_RESET') {
           setLiveTest((prev) => (prev ? { ...prev, isTestRunning: false } : null));
+          setBufferRemaining(null);
+          setElapsedSamplingSeconds(0);
+          testReceivedTimeRef.current = null;
           if (msg.type === 'TEST_RESET') setSubmittedVerdict(null);
         }
       };
@@ -168,6 +182,8 @@ export default function HiddenAssessorPage() {
 
           if (dbState.testId && lastVibratedTestIdRef.current !== dbState.testId) {
             lastVibratedTestIdRef.current = dbState.testId;
+            testReceivedTimeRef.current = Date.now();
+            recordedDurationRef.current = null;
             if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
               navigator.vibrate([250, 100, 250]);
             }
@@ -175,9 +191,11 @@ export default function HiddenAssessorPage() {
         } else if (dbState.verdict) {
           setLiveTest(dbState);
           setSubmittedVerdict(dbState.verdict);
+          setBufferRemaining(null);
         } else {
           setLiveTest(dbState);
           setSubmittedVerdict(null);
+          setBufferRemaining(null);
         }
       } catch {}
     };
@@ -189,6 +207,47 @@ export default function HiddenAssessorPage() {
       clearInterval(interval);
     };
   }, [isUnlocked]);
+
+  // 5. Synchronized 5-Second Buffer Countdown & Active Sampling Timer
+  useEffect(() => {
+    if (!isUnlocked) return;
+    const isRunning = Boolean(liveTest?.isTestRunning) && !submittedVerdict && !liveTest?.verdict;
+    if (!isRunning) {
+      setBufferRemaining(null);
+      return;
+    }
+
+    const computeTimes = () => {
+      const serverStartedAt = liveTest?.startedAt ? new Date(liveTest.startedAt).getTime() : null;
+      const now = Date.now();
+
+      let effectiveStart = serverStartedAt;
+      // If server timestamp is missing or clock skewed > 10s from now, fallback to arrival time
+      if (!effectiveStart || Math.abs(now - effectiveStart) > 10000) {
+        if (!testReceivedTimeRef.current) {
+          testReceivedTimeRef.current = now;
+        }
+        effectiveStart = testReceivedTimeRef.current;
+      }
+
+      const diffMs = Math.max(0, now - effectiveStart);
+      if (diffMs < 5000) {
+        // MOX Hotplate 5-second heating buffer active
+        const rem = Math.max(1, Math.ceil((5000 - diffMs) / 1000));
+        setBufferRemaining(rem);
+        setElapsedSamplingSeconds(0);
+      } else {
+        // Buffer finished: active headspace volatile sampling (1s, 2s, 3s... target ~30s)
+        setBufferRemaining(null);
+        const elapsedSec = Math.max(1, Math.floor((diffMs - 5000) / 1000) + 1);
+        setElapsedSamplingSeconds(elapsedSec);
+      }
+    };
+
+    computeTimes();
+    const interval = setInterval(computeTimes, 250);
+    return () => clearInterval(interval);
+  }, [isUnlocked, liveTest?.isTestRunning, liveTest?.startedAt, liveTest?.verdict, submittedVerdict]);
 
   // Keypad Handlers
   const handleKeyClick = (digit: string) => {
@@ -239,9 +298,14 @@ export default function HiddenAssessorPage() {
 
   // Submit verdict to main dashboard and persist to Supabase Database
   const handleSelectVerdict = async (verdict: FreshnessVerdict) => {
+    // STRICT LOCK: Never allow grading during 5-second sensor pre-heating
+    if (bufferRemaining !== null && bufferRemaining > 0) return;
+
+    const duration = elapsedSamplingSeconds > 0 ? elapsedSamplingSeconds : 30;
+    recordedDurationRef.current = duration;
     setIsSubmitting(true);
     setSubmittedVerdict(verdict);
-    setLiveTest((prev) => (prev ? { ...prev, isTestRunning: false, verdict } : null));
+    setLiveTest((prev) => (prev ? { ...prev, isTestRunning: false, verdict, durationSeconds: duration } : null));
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       navigator.vibrate(120);
     }
@@ -261,7 +325,7 @@ export default function HiddenAssessorPage() {
       verdict,
       freshness_score: calculatedScore,
       verdict_submitted_at: new Date().toISOString(),
-      assessor_name: 'Phone Assessor',
+      assessor_name: `Phone Assessor (${duration}s)`,
     }).catch(() => {});
 
     // 2. ARCHIVE RECORD IN SUPABASE TEST HISTORY
@@ -270,7 +334,7 @@ export default function HiddenAssessorPage() {
       cakeType: currentCake,
       verdict,
       freshnessScore: calculatedScore,
-      assessorName: 'Phone Assessor',
+      assessorName: `Phone Assessor (${duration}s)`,
     }).catch(() => {});
 
     // 3. BROADCAST VIA LOCAL BROADCASTCHANNEL (Instant same-device sync)
@@ -280,6 +344,7 @@ export default function HiddenAssessorPage() {
       testId: currentTestId,
       cakeType: currentCake,
       score: calculatedScore,
+      durationSeconds: duration,
       assessorName: 'Phone Assessor',
     });
 
@@ -291,6 +356,7 @@ export default function HiddenAssessorPage() {
         verdict,
         testId: currentTestId,
         score: calculatedScore,
+        durationSeconds: duration,
         assessorName: 'Phone Assessor',
       }),
     }).catch(() => {});
@@ -405,6 +471,7 @@ export default function HiddenAssessorPage() {
 
   // 3. Unlocked Assessor Control Screen
   const isTesting = Boolean(liveTest?.isTestRunning) && !submittedVerdict && !liveTest?.verdict;
+  const isBufferHeating = isTesting && bufferRemaining !== null && bufferRemaining > 0;
 
   return (
     <div className="min-h-[100dvh] bg-black text-white p-4 sm:p-6 max-w-md mx-auto flex flex-col justify-between select-none">
@@ -456,25 +523,61 @@ export default function HiddenAssessorPage() {
 
         {/* Live Test Alert Notification Banner */}
         {isTesting ? (
-          <div className="p-4 rounded-2xl border border-amber-500 bg-amber-950/40 space-y-2 animate-pulse shadow-lg ring-1 ring-amber-500/30">
-            <div className="flex items-center gap-2 text-amber-300 font-extrabold text-xs uppercase tracking-wider">
-              <Bell className="w-4 h-4 text-amber-400 animate-bounce" />
-              <span>Active Test Received from Station!</span>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-base font-extrabold text-white">
-                {liveTest?.selectedCakeType || 'Active Specimen'}
-              </div>
-              {liveTest?.testId && (
-                <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-amber-900/80 text-amber-200 border border-amber-600 font-bold">
-                  ID: {liveTest.testId}
+          isBufferHeating ? (
+            /* 5-Second MOX Pre-Heater Thermal Buffer Countdown */
+            <div className="p-4 rounded-2xl border border-amber-500 bg-amber-950/50 space-y-2 animate-pulse shadow-lg ring-1 ring-amber-500/30">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-amber-300 font-extrabold text-xs uppercase tracking-wider">
+                  <Flame className="w-4 h-4 text-amber-400 animate-bounce" />
+                  <span>BME688 MOX Hotplate Heating (320°C)</span>
+                </div>
+                <span className="font-mono text-[10px] uppercase px-2 py-0.5 rounded bg-amber-900/80 text-amber-200 border border-amber-700 font-bold">
+                  Buffer Locked
                 </span>
-              )}
+              </div>
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <div>
+                  <div className="text-base font-extrabold text-white">
+                    {liveTest?.selectedCakeType || 'Active Specimen'}
+                  </div>
+                  <div className="text-xs text-amber-200/90 mt-0.5">
+                    Stabilizing baseline resistance before sampling begins...
+                  </div>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-white text-black font-black text-xl flex items-center justify-center font-mono shrink-0 shadow-lg">
+                  {bufferRemaining}s
+                </div>
+              </div>
             </div>
-            <p className="text-xs text-amber-200/90 leading-relaxed">
-              Microcontroller is sampling headspace. Tap a grade below to finalize test on the main screen:
-            </p>
-          </div>
+          ) : (
+            /* Active Headspace Sampling with Real-Time Elapsed Seconds Counter */
+            <div className="p-4 rounded-2xl border border-emerald-500 bg-emerald-950/40 space-y-2 shadow-lg ring-1 ring-emerald-500/30">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-emerald-300 font-extrabold text-xs uppercase tracking-wider">
+                  <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
+                  <span>Active Headspace Sampling</span>
+                </div>
+                <div className="flex items-center gap-1.5 font-mono text-xs px-2.5 py-1 rounded-lg bg-emerald-900/90 text-emerald-200 border border-emerald-600 font-bold shadow-sm">
+                  <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>{elapsedSamplingSeconds}s</span>
+                  <span className="text-[10px] text-emerald-400/80 font-normal">(Target ~30s)</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2 pt-0.5">
+                <div className="text-base font-extrabold text-white">
+                  {liveTest?.selectedCakeType || 'Active Specimen'}
+                </div>
+                {liveTest?.testId && (
+                  <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold">
+                    {liveTest.testId}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-neutral-300 leading-relaxed">
+                Microcontroller is sampling chamber VOCs. Select your evaluation grade below (Recommended at ~30s):
+              </p>
+            </div>
+          )
         ) : (
           <div className="p-4 rounded-xl border border-neutral-800 bg-neutral-950 space-y-1">
             <span className="text-[10px] font-mono uppercase text-neutral-500 block">
@@ -503,22 +606,30 @@ export default function HiddenAssessorPage() {
         {/* Option 1: Fresh */}
         <button
           onClick={() => handleSelectVerdict('Fresh')}
-          disabled={isSubmitting}
-          className={`w-full p-4 rounded-2xl border text-left transition flex items-center justify-between active:scale-98 cursor-pointer ${
-            submittedVerdict === 'Fresh'
-              ? 'border-emerald-500 bg-emerald-950/70 text-emerald-300 shadow-xl ring-2 ring-emerald-500/80'
+          disabled={isSubmitting || isBufferHeating}
+          className={`w-full p-4 rounded-2xl border text-left transition flex items-center justify-between ${
+            isBufferHeating
+              ? 'border-neutral-800/60 bg-neutral-950/40 text-neutral-500 cursor-not-allowed opacity-50'
+              : submittedVerdict === 'Fresh'
+              ? 'border-emerald-500 bg-emerald-950/70 text-emerald-300 shadow-xl ring-2 ring-emerald-500/80 active:scale-98 cursor-pointer'
               : isTesting
-              ? 'border-neutral-700 bg-neutral-950 hover:border-emerald-500 text-white hover:bg-emerald-950/20 shadow-md'
-              : 'border-neutral-800/90 bg-neutral-950/90 hover:border-neutral-700 text-neutral-200'
+              ? 'border-neutral-700 bg-neutral-950 hover:border-emerald-500 text-white hover:bg-emerald-950/20 shadow-md active:scale-98 cursor-pointer'
+              : 'border-neutral-800/90 bg-neutral-950/90 hover:border-neutral-700 text-neutral-200 cursor-pointer active:scale-98'
           }`}
         >
           <div>
             <div className="font-extrabold text-base flex items-center gap-2 text-emerald-400">
-              <span className={`w-3 h-3 rounded-full bg-emerald-500 ${isTesting ? 'animate-pulse' : ''}`} />
+              <span className={`w-3 h-3 rounded-full bg-emerald-500 ${isTesting && !isBufferHeating ? 'animate-pulse' : ''}`} />
               <span>Fresh (Grade A)</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/60">
-                ~95%
-              </span>
+              {isBufferHeating ? (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-900 text-neutral-500 border border-neutral-800">
+                  🔒 Wait {bufferRemaining}s
+                </span>
+              ) : (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/60">
+                  ~95%
+                </span>
+              )}
             </div>
             <div className="text-[11px] text-neutral-400 mt-1">
               Sweet aroma, soft fresh crumb, optimal moisture balance.
@@ -532,22 +643,30 @@ export default function HiddenAssessorPage() {
         {/* Option 2: Fairly Fresh */}
         <button
           onClick={() => handleSelectVerdict('Fairly Fresh')}
-          disabled={isSubmitting}
-          className={`w-full p-4 rounded-2xl border text-left transition flex items-center justify-between active:scale-98 cursor-pointer ${
-            submittedVerdict === 'Fairly Fresh'
-              ? 'border-amber-500 bg-amber-950/70 text-amber-300 shadow-xl ring-2 ring-amber-500/80'
+          disabled={isSubmitting || isBufferHeating}
+          className={`w-full p-4 rounded-2xl border text-left transition flex items-center justify-between ${
+            isBufferHeating
+              ? 'border-neutral-800/60 bg-neutral-950/40 text-neutral-500 cursor-not-allowed opacity-50'
+              : submittedVerdict === 'Fairly Fresh'
+              ? 'border-amber-500 bg-amber-950/70 text-amber-300 shadow-xl ring-2 ring-amber-500/80 active:scale-98 cursor-pointer'
               : isTesting
-              ? 'border-neutral-700 bg-neutral-950 hover:border-amber-500 text-white hover:bg-amber-950/20 shadow-md'
-              : 'border-neutral-800/90 bg-neutral-950/90 hover:border-neutral-700 text-neutral-200'
+              ? 'border-neutral-700 bg-neutral-950 hover:border-amber-500 text-white hover:bg-amber-950/20 shadow-md active:scale-98 cursor-pointer'
+              : 'border-neutral-800/90 bg-neutral-950/90 hover:border-neutral-700 text-neutral-200 cursor-pointer active:scale-98'
           }`}
         >
           <div>
             <div className="font-extrabold text-base flex items-center gap-2 text-amber-400">
-              <span className={`w-3 h-3 rounded-full bg-amber-500 ${isTesting ? 'animate-pulse' : ''}`} />
+              <span className={`w-3 h-3 rounded-full bg-amber-500 ${isTesting && !isBufferHeating ? 'animate-pulse' : ''}`} />
               <span>Fairly Fresh (Good)</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-800/60">
-                ~75%
-              </span>
+              {isBufferHeating ? (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-900 text-neutral-500 border border-neutral-800">
+                  🔒 Wait {bufferRemaining}s
+                </span>
+              ) : (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-800/60">
+                  ~75%
+                </span>
+              )}
             </div>
             <div className="text-[11px] text-neutral-400 mt-1">
               Normal aroma, slight dryness, consume within 24–48 hours.
@@ -561,22 +680,30 @@ export default function HiddenAssessorPage() {
         {/* Option 3: Stale */}
         <button
           onClick={() => handleSelectVerdict('Stale')}
-          disabled={isSubmitting}
-          className={`w-full p-4 rounded-2xl border text-left transition flex items-center justify-between active:scale-98 cursor-pointer ${
-            submittedVerdict === 'Stale'
-              ? 'border-orange-500 bg-orange-950/70 text-orange-300 shadow-xl ring-2 ring-orange-500/80'
+          disabled={isSubmitting || isBufferHeating}
+          className={`w-full p-4 rounded-2xl border text-left transition flex items-center justify-between ${
+            isBufferHeating
+              ? 'border-neutral-800/60 bg-neutral-950/40 text-neutral-500 cursor-not-allowed opacity-50'
+              : submittedVerdict === 'Stale'
+              ? 'border-orange-500 bg-orange-950/70 text-orange-300 shadow-xl ring-2 ring-orange-500/80 active:scale-98 cursor-pointer'
               : isTesting
-              ? 'border-neutral-700 bg-neutral-950 hover:border-orange-500 text-white hover:bg-orange-950/20 shadow-md'
-              : 'border-neutral-800/90 bg-neutral-950/90 hover:border-neutral-700 text-neutral-200'
+              ? 'border-neutral-700 bg-neutral-950 hover:border-orange-500 text-white hover:bg-orange-950/20 shadow-md active:scale-98 cursor-pointer'
+              : 'border-neutral-800/90 bg-neutral-950/90 hover:border-neutral-700 text-neutral-200 cursor-pointer active:scale-98'
           }`}
         >
           <div>
             <div className="font-extrabold text-base flex items-center gap-2 text-orange-400">
-              <span className={`w-3 h-3 rounded-full bg-orange-500 ${isTesting ? 'animate-pulse' : ''}`} />
+              <span className={`w-3 h-3 rounded-full bg-orange-500 ${isTesting && !isBufferHeating ? 'animate-pulse' : ''}`} />
               <span>Stale / Day-Old</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-orange-950/60 text-orange-300 border border-orange-800/60">
-                ~52%
-              </span>
+              {isBufferHeating ? (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-900 text-neutral-500 border border-neutral-800">
+                  🔒 Wait {bufferRemaining}s
+                </span>
+              ) : (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-orange-950/60 text-orange-300 border border-orange-800/60">
+                  ~52%
+                </span>
+              )}
             </div>
             <div className="text-[11px] text-neutral-400 mt-1">
               Moisture loss, firm dry crumb, significant loss of fresh aroma.
@@ -590,22 +717,30 @@ export default function HiddenAssessorPage() {
         {/* Option 4: Spoiled */}
         <button
           onClick={() => handleSelectVerdict('Spoiled')}
-          disabled={isSubmitting}
-          className={`w-full p-4 rounded-2xl border text-left transition flex items-center justify-between active:scale-98 cursor-pointer ${
-            submittedVerdict === 'Spoiled' || submittedVerdict === 'Not Fresh'
-              ? 'border-rose-500 bg-rose-950/70 text-rose-300 shadow-xl ring-2 ring-rose-500/80'
+          disabled={isSubmitting || isBufferHeating}
+          className={`w-full p-4 rounded-2xl border text-left transition flex items-center justify-between ${
+            isBufferHeating
+              ? 'border-neutral-800/60 bg-neutral-950/40 text-neutral-500 cursor-not-allowed opacity-50'
+              : submittedVerdict === 'Spoiled' || submittedVerdict === 'Not Fresh'
+              ? 'border-rose-500 bg-rose-950/70 text-rose-300 shadow-xl ring-2 ring-rose-500/80 active:scale-98 cursor-pointer'
               : isTesting
-              ? 'border-neutral-700 bg-neutral-950 hover:border-rose-500 text-white hover:bg-rose-950/20 shadow-md'
-              : 'border-neutral-800/90 bg-neutral-950/90 hover:border-neutral-700 text-neutral-200'
+              ? 'border-neutral-700 bg-neutral-950 hover:border-rose-500 text-white hover:bg-rose-950/20 shadow-md active:scale-98 cursor-pointer'
+              : 'border-neutral-800/90 bg-neutral-950/90 hover:border-neutral-700 text-neutral-200 cursor-pointer active:scale-98'
           }`}
         >
           <div>
             <div className="font-extrabold text-base flex items-center gap-2 text-rose-400">
-              <span className={`w-3 h-3 rounded-full bg-rose-500 ${isTesting ? 'animate-pulse' : ''}`} />
+              <span className={`w-3 h-3 rounded-full bg-rose-500 ${isTesting && !isBufferHeating ? 'animate-pulse' : ''}`} />
               <span>Spoiled / Expired</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-950/60 text-rose-300 border border-rose-800/60">
-                ~18%
-              </span>
+              {isBufferHeating ? (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-900 text-neutral-500 border border-neutral-800">
+                  🔒 Wait {bufferRemaining}s
+                </span>
+              ) : (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-950/60 text-rose-300 border border-rose-800/60">
+                  ~18%
+                </span>
+              )}
             </div>
             <div className="text-[11px] text-neutral-400 mt-1">
               Sour odor, fermentation volatiles detected, microbial hazard.
@@ -633,16 +768,29 @@ export default function HiddenAssessorPage() {
               {liveTest?.testId && (
                 <span className="text-neutral-400 block mt-0.5">Test ID: {liveTest.testId}</span>
               )}
+              {recordedDurationRef.current && (
+                <span className="text-emerald-300 font-bold block mt-1 inline-flex items-center gap-1 text-xs">
+                  <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Recorded at {recordedDurationRef.current}s sampling duration</span>
+                </span>
+              )}
             </p>
             <p className="text-[10px] text-emerald-300/70 pt-0.5">
               Station test concluded. Ready for next specimen.
             </p>
           </div>
         ) : isTesting ? (
-          <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-800/50 text-center text-xs text-amber-300 font-mono animate-pulse flex items-center justify-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-            <span>Active Sampling — Tap any grade above to record verdict</span>
-          </div>
+          isBufferHeating ? (
+            <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-800 text-center text-xs text-amber-300 font-mono flex items-center justify-center gap-2 shadow-sm">
+              <Flame className="w-4 h-4 text-amber-400 animate-bounce" />
+              <span>Sensor Pre-Heating in Progress • Grade input unlocks in {bufferRemaining}s</span>
+            </div>
+          ) : (
+            <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-800/60 text-center text-xs text-emerald-300 font-mono flex items-center justify-center gap-2">
+              <Clock className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+              <span>Sampling: {elapsedSamplingSeconds}s • Tap any grade above to record verdict</span>
+            </div>
+          )
         ) : (
           <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 text-center text-xs text-neutral-400 font-mono flex items-center justify-center gap-2">
             <Smartphone className="w-3.5 h-3.5 text-neutral-400" />
