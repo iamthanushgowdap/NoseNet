@@ -1,5 +1,5 @@
 // In-memory + cloud-bridged live test store for instant cross-device and cross-lambda synchronization
-import { directCloudPush, directCloudFetch, CloudLiveState } from '@/lib/sync/live-sync';
+import { broadcastLiveSync, fetchLatestLiveEvents, LiveSyncEvent } from '@/lib/sync/live-sync';
 
 export type CakeType =
   | 'Normal Cake — Frozen'
@@ -36,23 +36,10 @@ declare global {
   var __liveTestStoreInstance: LiveTestStore | undefined;
 }
 
-async function pushStateToCloud(state: LiveTestState): Promise<void> {
-  await directCloudPush({
-    isTestRunning: state.isTestRunning,
-    selectedCakeType: state.selectedCakeType,
-    startedAt: state.startedAt,
-    testId: state.testId,
-    verdict: state.verdict,
-    freshnessScore: state.freshnessScore,
-    verdictSubmittedAt: state.verdictSubmittedAt,
-    assessorName: state.assessorName,
-  });
-}
-
 class LiveTestStore {
   private state: LiveTestState = {
     isTestRunning: false,
-    selectedCakeType: null,
+    selectedCakeType: 'Normal Cake — Unfrozen',
     startedAt: null,
     testId: null,
     lastSensorReading: null,
@@ -78,20 +65,39 @@ class LiveTestStore {
 
   public async getSyncedState(): Promise<LiveTestState> {
     const now = Date.now();
-    // Cache for 400ms to eliminate redundant network roundtrips during tight polling
     if (now - this.lastCloudSyncTime > 400) {
       this.lastCloudSyncTime = now;
-      const cloudData = await directCloudFetch();
-      if (cloudData) {
-        if (cloudData.testId !== undefined) this.state.testId = cloudData.testId ?? null;
-        if (cloudData.isTestRunning !== undefined) this.state.isTestRunning = Boolean(cloudData.isTestRunning);
-        if (cloudData.selectedCakeType !== undefined) this.state.selectedCakeType = (cloudData.selectedCakeType as CakeType) ?? null;
-        if (cloudData.startedAt !== undefined) this.state.startedAt = cloudData.startedAt ?? null;
-        this.state.verdict = (cloudData.verdict as FreshnessVerdict) || null;
-        this.state.freshnessScore = cloudData.freshnessScore ?? null;
-        this.state.verdictSubmittedAt = cloudData.verdictSubmittedAt ?? null;
-        this.state.assessorName = cloudData.assessorName ?? null;
-      }
+      try {
+        const events = await fetchLatestLiveEvents();
+        if (events.length > 0) {
+          const last = events[events.length - 1];
+          if (last.type === 'CAKE_SELECTED' && last.cakeType) {
+            this.state.selectedCakeType = last.cakeType as CakeType;
+          } else if (last.type === 'TEST_STARTING' || last.type === 'TEST_RUNNING') {
+            this.state.isTestRunning = true;
+            if (last.cakeType) this.state.selectedCakeType = last.cakeType as CakeType;
+            if (last.testId) this.state.testId = last.testId;
+            this.state.verdict = null;
+            this.state.freshnessScore = null;
+            this.state.startedAt = last.timestamp || new Date().toISOString();
+          } else if (last.type === 'VERDICT_SUBMITTED') {
+            this.state.isTestRunning = false;
+            this.state.verdict = (last.verdict as FreshnessVerdict) || null;
+            this.state.freshnessScore = last.score ?? null;
+            if (last.testId) this.state.testId = last.testId;
+            if (last.cakeType) this.state.selectedCakeType = last.cakeType as CakeType;
+            this.state.verdictSubmittedAt = last.timestamp || new Date().toISOString();
+            this.state.assessorName = last.assessorName || 'Phone Assessor';
+          } else if (last.type === 'TEST_STOPPED' || last.type === 'TEST_RESET') {
+            this.state.isTestRunning = false;
+            if (last.type === 'TEST_RESET') {
+              this.state.verdict = null;
+              this.state.freshnessScore = null;
+              this.state.testId = null;
+            }
+          }
+        }
+      } catch {}
     }
     return this.getState();
   }
@@ -111,7 +117,11 @@ class LiveTestStore {
       assessorName: null,
     };
     this.lastCloudSyncTime = Date.now();
-    await pushStateToCloud(this.state);
+    await broadcastLiveSync({
+      type: 'TEST_STARTING',
+      cakeType,
+      testId,
+    });
     return this.getState();
   }
 
@@ -130,21 +140,25 @@ class LiveTestStore {
       assessorName: null,
     };
     this.lastCloudSyncTime = Date.now();
-    pushStateToCloud(this.state).catch(() => {});
+    broadcastLiveSync({
+      type: 'TEST_STARTING',
+      cakeType,
+      testId,
+    }).catch(() => {});
     return this.getState();
   }
 
   public async stopTestAsync(): Promise<LiveTestState> {
     this.state.isTestRunning = false;
     this.lastCloudSyncTime = Date.now();
-    await pushStateToCloud(this.state);
+    await broadcastLiveSync({ type: 'TEST_STOPPED' });
     return this.getState();
   }
 
   public stopTest(): LiveTestState {
     this.state.isTestRunning = false;
     this.lastCloudSyncTime = Date.now();
-    pushStateToCloud(this.state).catch(() => {});
+    broadcastLiveSync({ type: 'TEST_STOPPED' }).catch(() => {});
     return this.getState();
   }
 
@@ -162,7 +176,7 @@ class LiveTestStore {
       assessorName: null,
     };
     this.lastCloudSyncTime = Date.now();
-    await pushStateToCloud(this.state);
+    await broadcastLiveSync({ type: 'TEST_RESET' });
     return this.getState();
   }
 
@@ -180,12 +194,11 @@ class LiveTestStore {
       assessorName: null,
     };
     this.lastCloudSyncTime = Date.now();
-    pushStateToCloud(this.state).catch(() => {});
+    broadcastLiveSync({ type: 'TEST_RESET' }).catch(() => {});
     return this.getState();
   }
 
   public updateSensorData(reading: Partial<LiveSensorSnapshot>): LiveTestState {
-    // STRICT HARDWARE CLOSURE: Never ingest sensor data if test is closed or verdict is already finalized
     if (!this.state.isTestRunning || this.state.verdict) {
       return this.getState();
     }
@@ -218,7 +231,6 @@ class LiveTestStore {
     this.state.verdictSubmittedAt = new Date().toISOString();
     this.state.assessorName = assessorName;
 
-    // Calculate dynamic freshness score (%) tied to sensor metrics
     if (score !== undefined && score !== null) {
       this.state.freshnessScore = score;
     } else {
@@ -231,13 +243,19 @@ class LiveTestStore {
       } else if (verdict === 'Stale') {
         this.state.freshnessScore = Number((51.4 + gasOffset * 2.2).toFixed(1));
       } else {
-        // Spoiled / Not Fresh
         this.state.freshnessScore = Number((15.8 + gasOffset * 2.4).toFixed(1));
       }
     }
 
     this.lastCloudSyncTime = Date.now();
-    await pushStateToCloud(this.state);
+    await broadcastLiveSync({
+      type: 'VERDICT_SUBMITTED',
+      verdict,
+      score: this.state.freshnessScore,
+      testId: this.state.testId,
+      cakeType: this.state.selectedCakeType,
+      assessorName,
+    });
     return this.getState();
   }
 
@@ -272,7 +290,14 @@ class LiveTestStore {
     }
 
     this.lastCloudSyncTime = Date.now();
-    pushStateToCloud(this.state).catch(() => {});
+    broadcastLiveSync({
+      type: 'VERDICT_SUBMITTED',
+      verdict,
+      score: this.state.freshnessScore,
+      testId: this.state.testId,
+      cakeType: this.state.selectedCakeType,
+      assessorName,
+    }).catch(() => {});
     return this.getState();
   }
 }

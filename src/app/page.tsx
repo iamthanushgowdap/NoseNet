@@ -26,7 +26,12 @@ import {
   WirelessConnectionType,
 } from '@/lib/wireless/esp32-wireless';
 import { CakeType, FreshnessVerdict, LiveTestState } from '@/lib/server/live-test-store';
-import { directCloudPush, directCloudFetch } from '@/lib/sync/live-sync';
+import {
+  broadcastLiveSync,
+  fetchLatestLiveEvents,
+  LiveSyncEvent,
+  NTFY_TOPIC,
+} from '@/lib/sync/live-sync';
 import { SplashLogin } from '@/components/auth/splash-login';
 import { SensorResponseSparkline } from '@/components/dashboard/sensor-response-sparkline';
 import { RecentTestsLog, RecentTestItem } from '@/components/dashboard/recent-tests-log';
@@ -240,41 +245,100 @@ export default function MainDashboardPage() {
     };
   }, [activeTestId, isLocalRunning, liveTest?.verdict, liveTest?.testId, selectedCake]);
 
-  // Poll live test state with ultra-fast dual-channel fetch (Direct Cloud + API fallback)
+  // Specimen selection handler with instant cloud broadcast
+  const handleSelectCake = (cakeId: CakeType) => {
+    setSelectedCake(cakeId);
+    broadcastLiveSync({
+      type: 'CAKE_SELECTED',
+      cakeType: cakeId,
+    });
+  };
+
+  // 1. Zero-latency EventSource SSE stream from ntfy.sh (< 50ms push reactivity)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('EventSource' in window)) return;
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource(`${NTFY_TOPIC}/sse`);
+
+      es.onmessage = (event) => {
+        try {
+          const raw = JSON.parse(event.data);
+          if (!raw || !raw.message) return;
+          const msg: LiveSyncEvent = typeof raw.message === 'string' ? JSON.parse(raw.message) : raw.message;
+          if (!msg || !msg.type) return;
+
+          if (msg.type === 'VERDICT_SUBMITTED') {
+            setIsLocalRunning(false);
+            esp32Wireless.sendStopTest();
+            const finalScore =
+              msg.score ||
+              (msg.verdict === 'Fresh'
+                ? 95.2
+                : msg.verdict === 'Fairly Fresh'
+                ? 74.8
+                : msg.verdict === 'Stale'
+                ? 52.3
+                : 16.5);
+            const concludedState: LiveTestState = {
+              isTestRunning: false,
+              selectedCakeType: (msg.cakeType as any) || selectedCake,
+              startedAt: new Date().toISOString(),
+              testId: msg.testId || activeTestId,
+              lastSensorReading: null,
+              sensorReadingsCount: 1,
+              verdict: msg.verdict || null,
+              freshnessScore: finalScore,
+              verdictSubmittedAt: new Date().toISOString(),
+              assessorName: msg.assessorName || 'Remote Assessor',
+            };
+            setLiveTest(concludedState);
+            recordRecentTest(concludedState);
+          } else if (msg.type === 'TEST_STOPPED' || msg.type === 'TEST_RESET') {
+            setIsLocalRunning(false);
+            esp32Wireless.sendStopTest();
+            if (msg.type === 'TEST_RESET') {
+              setLiveTest(null);
+              setActiveTestId(null);
+              setGasHistory([24.2, 24.5]);
+            }
+          }
+        } catch {}
+      };
+    } catch {}
+
+    return () => {
+      if (es) es.close();
+    };
+  }, [activeTestId, selectedCake]);
+
+  // 2. Poll live test state backup
   const pollLiveState = async () => {
     try {
-      // 1. Direct cloud fetch (fastest path, ~300ms, bypasses serverless cold start)
-      let data: Partial<LiveTestState> | null = (await directCloudFetch()) as any;
-
-      // 2. Fallback to API route
-      if (!data) {
-        const res = await fetch('/api/live-test', { cache: 'no-store' });
-        if (res.ok) {
-          data = await res.json();
-        }
-      }
-
-      if (data && data.verdict) {
-        // Conclude immediately if verdict is for active test ID OR if test is actively running
-        const isCurrentTest = !activeTestId || data.testId === activeTestId || isLocalRunning;
-        if (isCurrentTest) {
-          setIsLocalRunning(false);
-          esp32Wireless.sendStopTest();
-          const concludedState: LiveTestState = {
-            isTestRunning: false,
-            selectedCakeType: (data.selectedCakeType as any) || selectedCake,
-            startedAt: data.startedAt || new Date().toISOString(),
-            testId: data.testId || activeTestId,
-            lastSensorReading: null,
-            sensorReadingsCount: 1,
-            verdict: data.verdict as any,
-            freshnessScore: data.freshnessScore ?? 85.0,
-            verdictSubmittedAt: data.verdictSubmittedAt || new Date().toISOString(),
-            assessorName: data.assessorName || 'Remote Assessor',
-          };
-          setLiveTest(concludedState);
-          recordRecentTest(concludedState);
-          return;
+      const events = await fetchLatestLiveEvents();
+      if (events.length > 0) {
+        const last = events[events.length - 1];
+        if (last.type === 'VERDICT_SUBMITTED' && last.verdict) {
+          const isCurrent = !activeTestId || last.testId === activeTestId || isLocalRunning;
+          if (isCurrent) {
+            setIsLocalRunning(false);
+            esp32Wireless.sendStopTest();
+            const concludedState: LiveTestState = {
+              isTestRunning: false,
+              selectedCakeType: (last.cakeType as any) || selectedCake,
+              startedAt: new Date().toISOString(),
+              testId: last.testId || activeTestId,
+              lastSensorReading: null,
+              sensorReadingsCount: 1,
+              verdict: last.verdict as any,
+              freshnessScore: last.score ?? 85.0,
+              verdictSubmittedAt: last.timestamp || new Date().toISOString(),
+              assessorName: last.assessorName || 'Remote Assessor',
+            };
+            setLiveTest(concludedState);
+            recordRecentTest(concludedState);
+            return;
+          }
         }
       }
     } catch {
@@ -287,7 +351,7 @@ export default function MainDashboardPage() {
     if (liveTest?.verdict && !isLocalRunning) return;
 
     pollLiveState();
-    const interval = setInterval(pollLiveState, 400);
+    const interval = setInterval(pollLiveState, 600);
     return () => clearInterval(interval);
   }, [activeTestId, isLocalRunning, liveTest?.verdict, selectedCake]);
 
@@ -316,27 +380,14 @@ export default function MainDashboardPage() {
     setGasHistory([24.2, 24.5]);
     setLiveTest(null);
 
-    // 2. REFRESH REMOTE ASSESSOR (Multi-tab Broadcast with new Test ID)
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      try {
-        const bc = new BroadcastChannel('nosenet_live_channel');
-        bc.postMessage({ type: 'NEW_TEST_STARTING', cakeType: selectedCake, testId: newTestId });
-        bc.close();
-      } catch {}
-    }
-
-    // 3. IMMEDIATE DIRECT CLOUD PUSH (Ensures phone assessor gets live alert instantly)
-    directCloudPush({
-      isTestRunning: true,
-      selectedCakeType: selectedCake,
+    // 2. BROADCAST TEST_STARTING TO ASSESSOR (Instant push notification across phone & tabs)
+    broadcastLiveSync({
+      type: 'TEST_STARTING',
+      cakeType: selectedCake,
       testId: newTestId,
-      verdict: null,
-      freshnessScore: null,
-      startedAt: new Date().toISOString(),
-      assessorName: null,
     });
 
-    // 4. INITIALIZE SERVER STORE WITH NEW TEST ID
+    // 3. INITIALIZE SERVER STORE WITH NEW TEST ID
     fetch('/api/live-test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -368,6 +419,12 @@ export default function MainDashboardPage() {
           assessorName: null,
         });
 
+        broadcastLiveSync({
+          type: 'TEST_RUNNING',
+          cakeType: selectedCake,
+          testId: newTestId,
+        });
+
         try {
           await esp32Wireless.sendTriggerRunTest(selectedCake, newTestId);
         } catch (e) {
@@ -384,7 +441,7 @@ export default function MainDashboardPage() {
     setCalibrationCount(null);
     setIsLocalRunning(false);
     setActiveTestId(null);
-    directCloudPush({ isTestRunning: false, verdict: null });
+    broadcastLiveSync({ type: 'TEST_STOPPED' });
     try {
       await esp32Wireless.sendStopTest();
     } catch (e) {
@@ -404,16 +461,9 @@ export default function MainDashboardPage() {
     setActiveTestId(null);
     setLiveTest(null);
     setGasHistory([24.2, 24.5]);
-    directCloudPush({ isTestRunning: false, testId: null, verdict: null, freshnessScore: null });
+    broadcastLiveSync({ type: 'TEST_RESET' });
     try {
       await esp32Wireless.sendStopTest();
-      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-        try {
-          const bc = new BroadcastChannel('nosenet_live_channel');
-          bc.postMessage({ type: 'TEST_RESET' });
-          bc.close();
-        } catch {}
-      }
       await fetch('/api/live-test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -515,7 +565,7 @@ export default function MainDashboardPage() {
               <button
                 key={cake.id}
                 disabled={isTesting}
-                onClick={() => setSelectedCake(cake.id)}
+                onClick={() => handleSelectCake(cake.id)}
                 className={`p-4 rounded-xl border text-left transition flex flex-col justify-between ${
                   isSelected
                     ? 'border-white bg-white text-black shadow-lg scale-[1.01]'
