@@ -87,14 +87,71 @@ describe('UI Components & Responsive Assessor Controls', () => {
     expect(fallback.durationSeconds).toBeNull();
   });
 
-  it('renders ArchitecturalOutputBento with genuine collected values and Try Again handler', async () => {
+  it('renders ArchitecturalOutputBento with 4-tier decision matrix (hiding reading section on verdict) and live telemetry while testing', async () => {
     const { ArchitecturalOutputBento } = await import(
       '@/components/dashboard/architectural-output-bento'
     );
     const onReset = vi.fn();
     const onTryAgain = vi.fn();
 
-    render(
+    const { rerender } = render(
+      <ArchitecturalOutputBento
+        selectedCake="Normal Cake — Unfrozen"
+        gasHistory={[40.0, 32.0]}
+        collectedReadings={[
+          {
+            gasResistanceKohm: 40.0,
+            gasResistanceOhm: 40000,
+            temperatureC: 27.4,
+            humidityPercent: 72,
+            pressureHpa: 715,
+            sensorStatus: 'OK',
+            timestamp: '2026-11-11T07:00:00Z',
+          },
+          {
+            gasResistanceKohm: 32.0,
+            gasResistanceOhm: 32000,
+            temperatureC: 27.6,
+            humidityPercent: 86,
+            pressureHpa: 715,
+            sensorStatus: 'OK',
+            timestamp: '2026-11-11T07:00:30Z',
+          },
+        ]}
+        liveTest={{
+          isTestRunning: true,
+          selectedCakeType: 'Normal Cake — Unfrozen',
+          startedAt: '2026-11-11T07:00:00Z',
+          testId: 'TEST-123456',
+          lastSensorReading: {
+            gasResistanceKohm: 32.0,
+            gasResistanceOhm: 32000,
+            temperatureC: 27.6,
+            humidityPercent: 86,
+            pressureHpa: 715,
+            sensorStatus: 'OK',
+            timestamp: '2026-11-11T07:00:30Z',
+          },
+          sensorReadingsCount: 2,
+          verdict: null,
+          freshnessScore: null,
+          durationSeconds: null,
+          verdictSubmittedAt: null,
+          assessorName: null,
+        }}
+        isTesting={true}
+        onReset={onReset}
+        onTryAgain={onTryAgain}
+        isConnected={true}
+      />
+    );
+
+    // While test is actively running, live telemetry readings display
+    expect(screen.getAllByText('40.00 kΩ').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('32.00 kΩ').length).toBeGreaterThanOrEqual(1);
+
+    // Once verdict arrives, raw readings section is removed and 4-tier decision matrix renders
+    rerender(
       <ArchitecturalOutputBento
         selectedCake="Normal Cake — Unfrozen"
         gasHistory={[40.0, 32.0]}
@@ -140,18 +197,19 @@ describe('UI Components & Responsive Assessor Controls', () => {
           assessorName: 'Phone Assessor|m:wet_tissue|d:30',
           materialType: 'wet_tissue',
         }}
+        isTesting={false}
         onReset={onReset}
         onTryAgain={onTryAgain}
         isConnected={true}
       />
     );
 
-    expect(screen.getByText('Stale')).toBeInTheDocument();
-    expect(screen.getAllByText('40.00 kΩ').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('-20.00%')).toBeInTheDocument();
+    expect(screen.getAllByText('Stale').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('ACTIVE DECISION')).toBeInTheDocument();
+    expect(screen.getByText(/4-Tier Decision Classification Matrix/i)).toBeInTheDocument();
     expect(screen.getByText(/hydroxyl \(OH⁻\)/i)).toBeInTheDocument();
-    expect(screen.getByText('86')).toBeInTheDocument();
-    expect(screen.getByText('27.6')).toBeInTheDocument();
+    expect(screen.queryByText('40.00 kΩ')).not.toBeInTheDocument();
+    expect(screen.queryByText('32.00 kΩ')).not.toBeInTheDocument();
 
     const tryAgainBtn = screen.getByRole('button', { name: /Try Again/i });
     fireEvent.click(tryAgainBtn);

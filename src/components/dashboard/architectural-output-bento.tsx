@@ -278,15 +278,21 @@ export function ArchitecturalOutputBento({
             durationSeconds={liveTest?.durationSeconds || decodedMeta.durationSeconds || null}
           />
 
-          {/* 2. SUB-BENTO GRID: Telemetry & Flow Architecture */}
+          {/* 2. SUB-BENTO GRID: Decision Matrix Basis when concluded, Live VOC Curve while scanning */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Left: Interactive VOC Response Curve Scrubber */}
-            <VOCScrubberCard
-              uid={uid}
-              gasHistory={activeGasVals}
-              isTesting={isTesting}
-              currentGasKohm={currentGasKohm}
-            />
+            {hasResult ? (
+              <DecisionFormulaCard
+                verdict={verdict || 'Fresh'}
+                selectedCake={liveTest?.selectedCakeType || selectedCake}
+              />
+            ) : (
+              <VOCScrubberCard
+                uid={uid}
+                gasHistory={activeGasVals}
+                isTesting={isTesting}
+                currentGasKohm={currentGasKohm}
+              />
+            )}
 
             {/* Right: Hardware Signal Flow Architecture */}
             <HardwareFlowCard
@@ -539,99 +545,81 @@ function FreshnessHeroCard({
               </div>
             </div>
 
-            {/* 4-Parameter Accurate Live Hardware Telemetry Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 font-mono">
-              <div className="p-3 rounded-xl bg-black border border-neutral-800/80">
-                <span className="text-[10px] text-neutral-400 uppercase block tracking-wider mb-1">
-                  R_GAS (FINAL)
+            {/* 4-Tier Decision Matrix Classification Bands (Replaces numerical reading blocks once verdict is issued) */}
+            <div className="p-4 rounded-xl bg-black border border-neutral-800 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-900 pb-2 font-mono">
+                <span className="text-[11px] uppercase font-bold tracking-wider text-neutral-300">
+                  4-Tier Decision Classification Matrix
                 </span>
-                <span className="text-base sm:text-lg font-bold text-white tabular-nums">
-                  {currentGasKohm !== null ? currentGasKohm.toFixed(2) : '--'}{' '}
-                  <span className="text-xs text-neutral-400 font-normal">kΩ</span>
-                </span>
-              </div>
-
-              <div className="p-3 rounded-xl bg-black border border-neutral-800/80">
-                <span className="text-[10px] text-neutral-400 uppercase block tracking-wider mb-1">
-                  CHAMBER TEMP
-                </span>
-                <span className="text-base sm:text-lg font-bold text-white tabular-nums">
-                  {currentTempC !== null ? currentTempC.toFixed(1) : '--'}{' '}
-                  <span className="text-xs text-neutral-400 font-normal">°C</span>
+                <span className="text-[10px] text-neutral-400">
+                  ΔR / R₀ (%) = [(R_comp − R₀) / R₀] × 100
                 </span>
               </div>
 
-              <div className="p-3 rounded-xl bg-black border border-neutral-800/80">
-                <span className="text-[10px] text-neutral-400 uppercase block tracking-wider mb-1">
-                  REL. HUMIDITY
-                </span>
-                <span className="text-base sm:text-lg font-bold text-white tabular-nums">
-                  {currentHumidity !== null ? currentHumidity.toFixed(0) : '--'}{' '}
-                  <span className="text-xs text-neutral-400 font-normal">%</span>
-                </span>
-              </div>
-
-              <div className="p-3 rounded-xl bg-black border border-neutral-800/80">
-                <span className="text-[10px] text-neutral-400 uppercase block tracking-wider mb-1">
-                  PRESSURE
-                </span>
-                <span className="text-base sm:text-lg font-bold text-white tabular-nums">
-                  {currentPressure !== null ? currentPressure.toFixed(0) : '--'}{' '}
-                  <span className="text-xs text-neutral-400 font-normal">hPa</span>
-                </span>
-              </div>
-            </div>
-
-            {/* Captured Hardware Values & Computed Equation Breakdown */}
-            <div className="p-3.5 rounded-xl bg-neutral-950/90 border border-neutral-800/80 font-mono space-y-2">
-              <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-neutral-400 border-b border-neutral-900 pb-1.5">
-                <span className="font-bold text-neutral-300">
-                  Collected BME688 Metrics &amp; Equation Summary
-                </span>
-                <span>{sessionStats.sampleCount} Hardware Readings</span>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                <div>
-                  <span className="text-[10px] text-neutral-500 block">Baseline R₀</span>
-                  <span className="font-bold text-white tabular-nums">
-                    {sessionStats.r0Kohm !== null ? `${sessionStats.r0Kohm.toFixed(2)} kΩ` : '--'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-neutral-500 block">ΔR / R₀ Shift</span>
-                  <span
-                    className={`font-bold tabular-nums ${
-                      sessionStats.deltaShiftPercent === null
-                        ? 'text-neutral-400'
-                        : sessionStats.deltaShiftPercent >= 0
-                        ? 'text-emerald-400'
-                        : 'text-amber-400'
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 font-mono">
+                {[
+                  {
+                    tier: 'Fresh' as const,
+                    active: isFresh,
+                    indexRange: '88.0% – 100.0%',
+                    shiftRange: 'ΔR / R₀ ∈ [−5.0%, +10.0%]',
+                    summary: 'Clean O₂ baseline equilibrium • Zero spoilage VOCs',
+                    activeCls: 'border-emerald-500/80 bg-emerald-950/30 text-emerald-300',
+                    dotCls: 'bg-emerald-400',
+                  },
+                  {
+                    tier: 'Fairly Fresh' as const,
+                    active: isFairlyFresh,
+                    indexRange: '70.0% – 87.9%',
+                    shiftRange: 'ΔR / R₀ ∈ [−15.0%, −5.1%]',
+                    summary: 'Minor headspace drift • Safe within 24–48h',
+                    activeCls: 'border-amber-500/80 bg-amber-950/30 text-amber-300',
+                    dotCls: 'bg-amber-400',
+                  },
+                  {
+                    tier: 'Stale' as const,
+                    active: isStale,
+                    indexRange: '40.0% – 69.9%',
+                    shiftRange: 'ΔR / R₀ ∈ [−35.0%, −15.1%]',
+                    summary: 'Moderate volatile / moisture shift • Degraded shelf-life',
+                    activeCls: 'border-orange-500/80 bg-orange-950/30 text-orange-300',
+                    dotCls: 'bg-orange-400',
+                  },
+                  {
+                    tier: 'Spoiled' as const,
+                    active: isSpoiled,
+                    indexRange: '0.0% – 39.9%',
+                    shiftRange: 'ΔR / R₀ < −35.0%',
+                    summary: 'Severe VOC resistance plunge • Unsafe for consumption',
+                    activeCls: 'border-rose-500/80 bg-rose-950/30 text-rose-300',
+                    dotCls: 'bg-rose-400',
+                  },
+                ].map((row) => (
+                  <div
+                    key={row.tier}
+                    className={`p-3 rounded-xl border transition ${
+                      row.active
+                        ? `${row.activeCls} ring-1 ring-white/10 shadow-md`
+                        : 'border-neutral-800/80 bg-neutral-950/70 text-neutral-400 opacity-75'
                     }`}
                   >
-                    {sessionStats.deltaShiftPercent !== null
-                      ? `${sessionStats.deltaShiftPercent >= 0 ? '+' : ''}${sessionStats.deltaShiftPercent.toFixed(2)}%`
-                      : '--'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-neutral-500 block">Mean R_gas / SMA₅</span>
-                  <span className="font-bold text-cyan-400 tabular-nums">
-                    {sessionStats.meanGasKohm !== null
-                      ? `${sessionStats.meanGasKohm.toFixed(2)} / ${
-                          sessionStats.sma5Kohm !== null ? sessionStats.sma5Kohm.toFixed(2) : '--'
-                        } kΩ`
-                      : '--'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-neutral-500 block">Mean Temp • RH</span>
-                  <span className="font-bold text-neutral-200 tabular-nums">
-                    {sessionStats.meanTempC !== null ? `${sessionStats.meanTempC.toFixed(1)}°C` : '--'} •{' '}
-                    {sessionStats.meanHumidity !== null
-                      ? `${sessionStats.meanHumidity.toFixed(0)}%`
-                      : '--'}
-                  </span>
-                </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 font-extrabold text-xs uppercase tracking-wide text-white">
+                        <span className={`w-2 h-2 rounded-full ${row.dotCls}`} />
+                        <span>{row.tier}</span>
+                      </div>
+                      <span className="text-[10px] font-bold">
+                        {row.active ? 'ACTIVE DECISION' : row.indexRange}
+                      </span>
+                    </div>
+                    <div className="text-[11px] font-bold text-neutral-200 mt-1">
+                      {row.shiftRange}
+                    </div>
+                    <div className="text-[10px] text-neutral-400 mt-0.5 leading-snug">
+                      {row.active ? `Index: ${row.indexRange} • ${row.summary}` : row.summary}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -744,7 +732,79 @@ function FreshnessHeroCard({
   );
 }
 
-/* 2. SUB-CARD 1: Interactive VOC Response Curve Scrubber (Bottom Left) */
+/* 2A. Decision Model & Equations Reference Card (Shown when Verdict is concluded) */
+function DecisionFormulaCard({
+  verdict,
+  selectedCake,
+}: {
+  verdict: FreshnessVerdict;
+  selectedCake: CakeType;
+}) {
+  const refBaseline =
+    selectedCake === 'Normal Cake — Frozen'
+      ? '46.80 kΩ'
+      : selectedCake === 'Pastry Cake — Unfrozen'
+      ? '40.05 kΩ'
+      : selectedCake === 'Pastry Cake — Frozen'
+      ? '40.62 kΩ'
+      : '36.80 kΩ';
+
+  return (
+    <div className="ib-frame ib-frame-hover">
+      <Brackets />
+      <div className="ib-card p-4 sm:p-5 flex flex-col justify-between space-y-3">
+        <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
+          <div className="flex items-center gap-2">
+            <Sliders className="w-3.5 h-3.5 text-cyan-400" />
+            <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-white">
+              Decision Equations &amp; Baseline Basis
+            </h3>
+          </div>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400">
+            4-Parameter Model
+          </span>
+        </div>
+
+        <div className="space-y-2 font-mono text-[11px]">
+          <div className="p-2.5 rounded-lg bg-black border border-neutral-800/80">
+            <span className="text-[10px] text-neutral-500 uppercase block">
+              Chemisorption &amp; Relative Shift Equation
+            </span>
+            <div className="text-neutral-200 mt-1">
+              VOC + O⁻ → VOC-O + e⁻ &nbsp;•&nbsp; ΔR / R₀ = [(R_comp − R₀) / R₀] × 100
+            </div>
+          </div>
+
+          <div className="p-2.5 rounded-lg bg-black border border-neutral-800/80">
+            <span className="text-[10px] text-neutral-500 uppercase block">
+              Temp, Humidity &amp; Pressure Compensation
+            </span>
+            <div className="text-neutral-200 mt-1">
+              R_comp = R_gas · exp(k_H · ΔAH(T,RH)) · [1 + α_T·ΔT] · (P₀/P)^γ
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <div className="p-2.5 rounded-lg bg-neutral-950 border border-neutral-900">
+              <span className="text-[10px] text-neutral-500 uppercase block">Target Matrix R₀</span>
+              <span className="text-xs font-bold text-white">{refBaseline} (Day 0)</span>
+            </div>
+            <div className="p-2.5 rounded-lg bg-neutral-950 border border-neutral-900">
+              <span className="text-[10px] text-neutral-500 uppercase block">Classified Tier</span>
+              <span className="text-xs font-bold text-cyan-400 uppercase">{verdict}</span>
+            </div>
+          </div>
+        </div>
+
+        <p className="text-[11px] text-neutral-400 leading-normal">
+          Live sensor telemetry is streamed during active chamber acquisition; final evaluation outputs the classified freshness tier and decision boundaries.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* 2B. SUB-CARD 1: Interactive VOC Response Curve Scrubber (Bottom Left during active test / standby) */
 interface VOCScrubberCardProps {
   uid: string;
   gasHistory: number[];
