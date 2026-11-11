@@ -14,6 +14,7 @@ import {
   Gauge,
   Sparkles,
   RefreshCw,
+  RotateCcw,
   Cpu,
   Activity,
   Layers,
@@ -25,8 +26,13 @@ import {
   WirelessConnectionStatus,
   WirelessConnectionType,
 } from '@/lib/wireless/esp32-wireless';
-import { CakeType, FreshnessVerdict, LiveTestState } from '@/lib/server/live-test-store';
-import { broadcastLiveSync, LiveSyncEvent } from '@/lib/sync/live-sync';
+import {
+  CakeType,
+  FreshnessVerdict,
+  LiveSensorSnapshot,
+  LiveTestState,
+} from '@/lib/server/live-test-store';
+import { broadcastLiveSync, decodeAssessorMeta, LiveSyncEvent } from '@/lib/sync/live-sync';
 import {
   getSupabaseLiveState,
   updateSupabaseLiveState,
@@ -86,35 +92,50 @@ export default function MainDashboardPage() {
   const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const activeTestIdRef = useRef<string | null>(null);
   const [isLocalRunning, setIsLocalRunning] = useState<boolean>(false);
+  const isLocalRunningRef = useRef<boolean>(false);
   const [isTriggering, setIsTriggering] = useState<boolean>(false);
 
   // Feature 3: Sensor Pre-Heater Calibration State (5s Countdown)
   const [isCalibrating, setIsCalibrating] = useState<boolean>(false);
   const [calibrationCount, setCalibrationCount] = useState<number | null>(null);
+  const calibrationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Active Headspace Sampling Elapsed Seconds Counter (1s, 2s, 3s... after 5s buffer)
   const [elapsedSamplingSeconds, setElapsedSamplingSeconds] = useState<number>(0);
   const samplingStartMsRef = useRef<number | null>(null);
 
-  // Feature 2: Sensor Response Sparkline Points
-  const [gasHistory, setGasHistory] = useState<number[]>([24.2, 24.5, 24.8]);
+  // Genuine Live Sensor Telemetry Preservation (Never wiped on verdict submission)
+  const [gasHistory, setGasHistory] = useState<number[]>([]);
+  const [collectedReadings, setCollectedReadings] = useState<LiveSensorSnapshot[]>([]);
+  const collectedReadingsRef = useRef<LiveSensorSnapshot[]>([]);
+  const latestReadingRef = useRef<LiveSensorSnapshot | null>(null);
+  const lastHandledRetryRef = useRef<string | null>(null);
+  const handleTryAgainRef = useRef<() => void>(() => {});
 
   // Feature 5: Recent Tests Log
   const [recentTests, setRecentTests] = useState<RecentTestItem[]>([]);
 
-  // Helper to record finalized test to recent list
+  // Helper to record finalized test to recent list using genuine collected metrics
   const recordRecentTest = (data: LiveTestState, customDuration?: number) => {
     if (!data.verdict || !data.testId) return;
     const finalVerdict: FreshnessVerdict = data.verdict;
     const currentTestId: string = data.testId;
     const currentCake = data.selectedCakeType || selectedCake;
-    const finalGas = data.lastSensorReading?.gasResistanceKohm || 24.5;
-    const finalTemp = data.lastSensorReading?.temperatureC || 28.6;
-    const finalHum = data.lastSensorReading?.humidityPercent || 68;
-    const finalScore = data.freshnessScore || (
-      finalVerdict === 'Fresh' ? 94.6 : finalVerdict === 'Fairly Fresh' ? 74.2 : finalVerdict === 'Stale' ? 52.8 : 18.4
-    );
-    const duration = customDuration ?? data.durationSeconds ?? (elapsedSamplingSeconds > 0 ? elapsedSamplingSeconds : 30);
+    const captured = data.lastSensorReading || latestReadingRef.current;
+    const finalGas = captured?.gasResistanceKohm ?? (gasHistory.length > 0 ? gasHistory[gasHistory.length - 1] : 0);
+    const finalTemp = captured?.temperatureC ?? 0;
+    const finalHum = captured?.humidityPercent ?? 0;
+    const finalScore =
+      data.freshnessScore ??
+      (finalVerdict === 'Fresh' ? 94.6 : finalVerdict === 'Fairly Fresh' ? 74.2 : finalVerdict === 'Stale' ? 52.8 : 18.4);
+    const duration =
+      customDuration ??
+      data.durationSeconds ??
+      (samplingStartMsRef.current
+        ? Math.max(1, Math.floor((Date.now() - samplingStartMsRef.current) / 1000) + 1)
+        : elapsedSamplingSeconds > 0
+        ? elapsedSamplingSeconds
+        : 30);
 
     setRecentTests((prev) => {
       if (prev.some((t) => t.id === currentTestId)) return prev;
@@ -168,40 +189,61 @@ export default function MainDashboardPage() {
 
           activeTestIdRef.current = null;
           setActiveTestId(null);
+          isLocalRunningRef.current = false;
           setIsLocalRunning(false);
+          const computedDuration = samplingStartMsRef.current
+            ? Math.max(1, Math.floor((Date.now() - samplingStartMsRef.current) / 1000) + 1)
+            : elapsedSamplingSeconds > 0
+            ? elapsedSamplingSeconds
+            : 30;
           samplingStartMsRef.current = null;
           // IMMEDIATELY HALT HARDWARE SAMPLING
           esp32Wireless.sendStopTest();
 
-          const durationSec = msg.durationSeconds ?? (elapsedSamplingSeconds > 0 ? elapsedSamplingSeconds : 30);
+          const durationSec = msg.durationSeconds ?? computedDuration;
           const finalVerdict = msg.verdict;
-          const score = msg.score || (
-            finalVerdict === 'Fresh' ? 94.6 : finalVerdict === 'Fairly Fresh' ? 74.2 : finalVerdict === 'Stale' ? 52.8 : 18.4
-          );
+          const score =
+            msg.score ??
+            (finalVerdict === 'Fresh' ? 94.6 : finalVerdict === 'Fairly Fresh' ? 74.2 : finalVerdict === 'Stale' ? 52.8 : 18.4);
+          const decoded = decodeAssessorMeta(msg.assessorName);
+          const preservedLastReading = latestReadingRef.current;
+          const preservedCount = collectedReadingsRef.current.length;
+
           const concludedState: LiveTestState = {
             selectedCakeType: (msg.cakeType as any) || selectedCake,
             startedAt: new Date().toISOString(),
             testId: msg.testId || `TEST-${Date.now().toString().slice(-6)}`,
-            lastSensorReading: null,
-            sensorReadingsCount: 1,
+            lastSensorReading: preservedLastReading,
+            sensorReadingsCount: preservedCount,
             isTestRunning: false,
             verdict: finalVerdict,
             freshnessScore: score,
             durationSeconds: durationSec,
             verdictSubmittedAt: new Date().toISOString(),
             assessorName: msg.assessorName || 'Phone Assessor',
+            materialType: msg.materialType || decoded.material,
           };
           setLiveTest(concludedState);
           recordRecentTest(concludedState, durationSec);
+        } else if (msg.type === 'TRY_AGAIN') {
+          const retryTok = msg.timestamp || String(Date.now());
+          if (lastHandledRetryRef.current !== retryTok) {
+            lastHandledRetryRef.current = retryTok;
+            handleTryAgainRef.current();
+          }
         } else if (msg.type === 'TEST_STOPPED' || msg.type === 'TEST_RESET') {
           activeTestIdRef.current = null;
           setActiveTestId(null);
+          isLocalRunningRef.current = false;
           setIsLocalRunning(false);
           samplingStartMsRef.current = null;
           setElapsedSamplingSeconds(0);
           if (msg.type === 'TEST_RESET') {
+            collectedReadingsRef.current = [];
+            latestReadingRef.current = null;
+            setCollectedReadings([]);
             setLiveTest(null);
-            setGasHistory([24.2, 24.5]);
+            setGasHistory([]);
           }
         }
       };
@@ -220,29 +262,38 @@ export default function MainDashboardPage() {
     const unsubSensor = esp32Wireless.subscribeSensorData((reading) => {
       if (!reading) return;
 
-      // STRICT TEST GATE: Only ingest into live test when a test is actively running
-      if (!isLocalRunning) return;
-      if (liveTest?.verdict && liveTest.testId === activeTestIdRef.current) return;
+      // STRICT TEST GATE: Only ingest genuine hardware packets when active test is running
+      if (!isLocalRunningRef.current) return;
 
-      // 1. Direct real-time gas resistance update (Zero lag)
-      if (reading.gasResistanceKohm) {
+      latestReadingRef.current = reading;
+      const nextCollected = [...collectedReadingsRef.current, reading];
+      collectedReadingsRef.current = nextCollected;
+      setCollectedReadings(nextCollected);
+
+      // 1. Direct real-time gas resistance curve update (Zero lag, genuine points only)
+      if (reading.gasResistanceKohm !== null && reading.gasResistanceKohm !== undefined) {
         const val = Number(reading.gasResistanceKohm);
-        setGasHistory((prev) => {
-          if (prev[prev.length - 1] !== val) {
-            return [...prev.slice(-14), val];
-          }
-          return prev;
-        });
+        setGasHistory((prev) => [...prev.slice(-39), val]);
       }
 
       // 2. Direct real-time live test state update
       setLiveTest((prev) => {
-        if (!prev || !prev.isTestRunning || (prev.verdict && prev.testId === activeTestIdRef.current)) return prev;
-        const count = (prev.sensorReadingsCount || 0) + 1;
+        if (prev && prev.verdict && prev.testId === activeTestIdRef.current) return prev;
         return {
-          ...prev,
+          ...(prev || {
+            isTestRunning: true,
+            selectedCakeType: selectedCake,
+            startedAt: new Date().toISOString(),
+            testId: activeTestIdRef.current,
+            verdict: null,
+            freshnessScore: null,
+            durationSeconds: null,
+            verdictSubmittedAt: null,
+            assessorName: null,
+          }),
+          isTestRunning: true,
           lastSensorReading: reading,
-          sensorReadingsCount: count,
+          sensorReadingsCount: nextCollected.length,
         };
       });
     });
@@ -251,15 +302,26 @@ export default function MainDashboardPage() {
       unsub();
       unsubSensor();
     };
-  }, [isLocalRunning, liveTest?.verdict, liveTest?.testId, selectedCake]);
+  }, [selectedCake]);
 
   // Specimen selection handler with instant Supabase database update and cloud broadcast
   const handleSelectCake = async (cakeId: CakeType) => {
+    if (calibrationTimerRef.current) {
+      clearInterval(calibrationTimerRef.current);
+      calibrationTimerRef.current = null;
+    }
     setSelectedCake(cakeId);
     setLiveTest(null);
     setActiveTestId(null);
     activeTestIdRef.current = null;
+    isLocalRunningRef.current = false;
     setIsLocalRunning(false);
+    setIsCalibrating(false);
+    setCalibrationCount(null);
+    collectedReadingsRef.current = [];
+    latestReadingRef.current = null;
+    setCollectedReadings([]);
+    setGasHistory([]);
     esp32Wireless.sendStopTest();
 
     // Persist to Supabase: clear previous test verdict and update specimen
@@ -285,6 +347,16 @@ export default function MainDashboardPage() {
       const supabaseState = await getSupabaseLiveState();
       if (!supabaseState) return;
 
+      // Handle remote Try Again trigger from /assessor across devices
+      if (supabaseState.assessorName?.startsWith('TRY_AGAIN_REQUESTED')) {
+        const retryToken = supabaseState.assessorName;
+        if (lastHandledRetryRef.current !== retryToken) {
+          lastHandledRetryRef.current = retryToken;
+          handleTryAgainRef.current();
+          return;
+        }
+      }
+
       // When remote assessor submits verdict on phone, Supabase has verdict
       if (supabaseState.verdict) {
         // STRICT MATCH: Only finalize if it matches the current active test ID
@@ -292,15 +364,28 @@ export default function MainDashboardPage() {
         if (isCurrentActive) {
           activeTestIdRef.current = null;
           setActiveTestId(null);
+          isLocalRunningRef.current = false;
           setIsLocalRunning(false);
+          const computedDuration = samplingStartMsRef.current
+            ? Math.max(1, Math.floor((Date.now() - samplingStartMsRef.current) / 1000) + 1)
+            : elapsedSamplingSeconds > 0
+            ? elapsedSamplingSeconds
+            : 30;
           samplingStartMsRef.current = null;
           // IMMEDIATELY HALT ESP32 SENSOR SAMPLING
           esp32Wireless.sendStopTest();
 
-          const durationSec = elapsedSamplingSeconds > 0 ? elapsedSamplingSeconds : 30;
+          const decoded = decodeAssessorMeta(supabaseState.assessorName);
+          const durationSec = decoded.durationSeconds ?? computedDuration;
+          const preservedLastReading = latestReadingRef.current;
+          const preservedCount = collectedReadingsRef.current.length;
+
           const fullConcludedState: LiveTestState = {
             ...supabaseState,
+            lastSensorReading: preservedLastReading,
+            sensorReadingsCount: preservedCount,
             durationSeconds: durationSec,
+            materialType: decoded.material,
           };
           setLiveTest(fullConcludedState);
           recordRecentTest(fullConcludedState, durationSec);
@@ -312,13 +397,18 @@ export default function MainDashboardPage() {
   };
 
   useEffect(() => {
-    // Only poll while a test is calibrating, actively running, or waiting for remote verdict
-    if (!isLocalRunning && !isCalibrating && !activeTestIdRef.current) return;
+    const activelyTracking = isLocalRunning || isCalibrating || Boolean(activeTestIdRef.current);
+    const listeningForRetry = isConnected && Boolean(liveTest?.verdict);
 
-    pollLiveState();
-    const interval = setInterval(pollLiveState, 400);
+    if (!activelyTracking && !listeningForRetry) return;
+
+    if (activelyTracking) {
+      pollLiveState();
+    }
+    const intervalMs = activelyTracking ? 400 : 1400;
+    const interval = setInterval(pollLiveState, intervalMs);
     return () => clearInterval(interval);
-  }, [isLocalRunning, isCalibrating, activeTestId]);
+  }, [isLocalRunning, isCalibrating, activeTestId, liveTest?.verdict, connectionStatus]);
 
   // Active Sampling Elapsed Seconds Counter (Increments 1s, 2s, 3s... after 5s buffer)
   useEffect(() => {
@@ -353,17 +443,26 @@ export default function MainDashboardPage() {
       return;
     }
 
-    // 1. FULL REFRESH: Assign brand new Test ID and reset previous state completely
+    if (calibrationTimerRef.current) {
+      clearInterval(calibrationTimerRef.current);
+      calibrationTimerRef.current = null;
+    }
+
+    // 1. FULL REFRESH: Assign brand new Test ID and reset previous readings cleanly
     const newTestId = `TEST-${Math.floor(100000 + Math.random() * 900000)}`;
     const nowIso = new Date().toISOString();
     setActiveTestId(newTestId);
     activeTestIdRef.current = newTestId;
+    isLocalRunningRef.current = false;
     setIsLocalRunning(false);
     samplingStartMsRef.current = null;
     setElapsedSamplingSeconds(0);
     setIsCalibrating(true);
     setCalibrationCount(5);
-    setGasHistory([24.2, 24.5]);
+    collectedReadingsRef.current = [];
+    latestReadingRef.current = null;
+    setCollectedReadings([]);
+    setGasHistory([]);
     setLiveTest(null);
 
     // 2. Persist to Supabase Database immediately
@@ -394,15 +493,19 @@ export default function MainDashboardPage() {
     }).catch(() => {});
 
     let remaining = 5;
-    const timer = setInterval(async () => {
+    calibrationTimerRef.current = setInterval(async () => {
       remaining -= 1;
       if (remaining > 0) {
         setCalibrationCount(remaining);
       } else {
-        clearInterval(timer);
+        if (calibrationTimerRef.current) {
+          clearInterval(calibrationTimerRef.current);
+          calibrationTimerRef.current = null;
+        }
         setCalibrationCount(null);
         setIsCalibrating(false);
         setIsTriggering(true);
+        isLocalRunningRef.current = true;
         setIsLocalRunning(true);
         samplingStartMsRef.current = Date.now();
         setElapsedSamplingSeconds(1);
@@ -439,9 +542,31 @@ export default function MainDashboardPage() {
     }, 1000);
   };
 
+  // Try Again: cleanly halts any stalled/completed run and immediately triggers a fresh cycle
+  const handleTryAgain = async () => {
+    if (calibrationTimerRef.current) {
+      clearInterval(calibrationTimerRef.current);
+      calibrationTimerRef.current = null;
+    }
+    try {
+      await esp32Wireless.sendStopTest();
+    } catch {}
+    if (!isConnected) {
+      await handleReset();
+      return;
+    }
+    await handleRunTest();
+  };
+  handleTryAgainRef.current = handleTryAgain;
+
   const handleStopTest = async () => {
+    if (calibrationTimerRef.current) {
+      clearInterval(calibrationTimerRef.current);
+      calibrationTimerRef.current = null;
+    }
     setIsCalibrating(false);
     setCalibrationCount(null);
+    isLocalRunningRef.current = false;
     setIsLocalRunning(false);
     samplingStartMsRef.current = null;
     setElapsedSamplingSeconds(0);
@@ -464,15 +589,23 @@ export default function MainDashboardPage() {
   };
 
   const handleReset = async () => {
+    if (calibrationTimerRef.current) {
+      clearInterval(calibrationTimerRef.current);
+      calibrationTimerRef.current = null;
+    }
     setIsCalibrating(false);
     setCalibrationCount(null);
+    isLocalRunningRef.current = false;
     setIsLocalRunning(false);
     samplingStartMsRef.current = null;
     setElapsedSamplingSeconds(0);
     setActiveTestId(null);
     activeTestIdRef.current = null;
+    collectedReadingsRef.current = [];
+    latestReadingRef.current = null;
+    setCollectedReadings([]);
     setLiveTest(null);
-    setGasHistory([24.2, 24.5]);
+    setGasHistory([]);
     updateSupabaseLiveState({
       is_test_running: false,
       test_id: null,
@@ -698,8 +831,15 @@ export default function MainDashboardPage() {
           ) : (
             <>
               <button
+                onClick={handleTryAgain}
+                className="flex-1 py-4 px-5 rounded-xl bg-white text-black font-extrabold text-sm hover:bg-neutral-200 transition flex items-center justify-center gap-2 cursor-pointer shadow"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Try Again</span>
+              </button>
+              <button
                 onClick={handleStopTest}
-                className="flex-1 py-4 px-6 rounded-xl bg-rose-950 border border-rose-800 text-rose-300 font-bold text-sm hover:bg-rose-900 transition flex items-center justify-center gap-2 cursor-pointer"
+                className="flex-1 py-4 px-5 rounded-xl bg-rose-950 border border-rose-800 text-rose-300 font-bold text-sm hover:bg-rose-900 transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Square className="w-4 h-4 fill-current" />
                 <span>Halt Sampling</span>
@@ -717,7 +857,7 @@ export default function MainDashboardPage() {
 
       {/* 4. Active Ingestion Status & Continuous Sensor Readout (Every 2-3s) */}
       {isTesting && (
-        <div className="p-4 sm:p-6 rounded-2xl border border-amber-800/60 bg-amber-950/20 space-y-4 sm:space-y-5 animate-pulse">
+        <div className="p-4 sm:p-6 rounded-2xl border border-amber-800/60 bg-amber-950/20 space-y-4 sm:space-y-5">
           <div className="flex items-center justify-between border-b border-amber-900/50 pb-3">
             <div className="flex items-center gap-2 text-amber-300 text-sm font-bold">
               <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
@@ -734,7 +874,7 @@ export default function MainDashboardPage() {
                 <span>{elapsedSamplingSeconds}s</span>
               </span>
               <span className="text-xs font-mono text-amber-300/80">
-                Update #{liveTest?.sensorReadingsCount || 1}
+                Sample #{liveTest?.sensorReadingsCount || 0}
               </span>
             </div>
           </div>
@@ -752,7 +892,7 @@ export default function MainDashboardPage() {
               <div className="text-xl sm:text-2xl font-extrabold font-mono text-white">
                 {liveTest?.lastSensorReading?.gasResistanceKohm !== null && liveTest?.lastSensorReading?.gasResistanceKohm !== undefined
                   ? `${liveTest.lastSensorReading.gasResistanceKohm.toFixed(2)}`
-                  : '24.50'}
+                  : '--'}
                 <span className="text-xs font-normal text-neutral-400 ml-1">kΩ</span>
               </div>
             </div>
@@ -764,7 +904,7 @@ export default function MainDashboardPage() {
               <div className="text-xl sm:text-2xl font-extrabold font-mono text-white">
                 {liveTest?.lastSensorReading?.temperatureC !== null && liveTest?.lastSensorReading?.temperatureC !== undefined
                   ? `${liveTest.lastSensorReading.temperatureC.toFixed(1)}`
-                  : '28.6'}
+                  : '--'}
                 <span className="text-xs font-normal text-neutral-400 ml-1">°C</span>
               </div>
             </div>
@@ -776,7 +916,7 @@ export default function MainDashboardPage() {
               <div className="text-xl sm:text-2xl font-extrabold font-mono text-white">
                 {liveTest?.lastSensorReading?.humidityPercent !== null && liveTest?.lastSensorReading?.humidityPercent !== undefined
                   ? `${liveTest.lastSensorReading.humidityPercent.toFixed(0)}`
-                  : '68'}
+                  : '--'}
                 <span className="text-xs font-normal text-neutral-400 ml-1">%</span>
               </div>
             </div>
@@ -788,7 +928,7 @@ export default function MainDashboardPage() {
               <div className="text-xl sm:text-2xl font-extrabold font-mono text-white">
                 {liveTest?.lastSensorReading?.pressureHpa !== null && liveTest?.lastSensorReading?.pressureHpa !== undefined
                   ? `${liveTest.lastSensorReading.pressureHpa.toFixed(0)}`
-                  : '718'}
+                  : '--'}
                 <span className="text-xs font-normal text-neutral-400 ml-1">hPa</span>
               </div>
             </div>
@@ -805,9 +945,12 @@ export default function MainDashboardPage() {
       <ArchitecturalOutputBento
         liveTest={liveTest}
         gasHistory={gasHistory}
+        collectedReadings={collectedReadings}
         selectedCake={selectedCake}
         isTesting={Boolean(isTesting)}
+        isConnected={isConnected}
         onReset={handleReset}
+        onTryAgain={handleTryAgain}
       />
 
       {/* Feature 5: Recent Specimen Test History Log */}

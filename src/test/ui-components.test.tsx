@@ -72,4 +72,89 @@ describe('UI Components & Responsive Assessor Controls', () => {
     expect(MARK_NOSENET).toContain('stroke="currentColor"');
     expect(MARK_NOSENET).toContain('M22 12h-2.48');
   });
+
+  it('encodes and decodes assessor material metadata safely within column limits', async () => {
+    const { encodeAssessorMeta, decodeAssessorMeta } = await import('@/lib/sync/live-sync');
+    const encoded = encodeAssessorMeta('Phone Assessor', 'wet_sponge', 30);
+    expect(encoded.length).toBeLessThan(100);
+    const decoded = decodeAssessorMeta(encoded);
+    expect(decoded.label).toBe('Phone Assessor');
+    expect(decoded.material).toBe('wet_sponge');
+    expect(decoded.durationSeconds).toBe(30);
+
+    const fallback = decodeAssessorMeta('Legacy Assessor');
+    expect(fallback.material).toBe('cake');
+    expect(fallback.durationSeconds).toBeNull();
+  });
+
+  it('renders ArchitecturalOutputBento with genuine collected values and Try Again handler', async () => {
+    const { ArchitecturalOutputBento } = await import(
+      '@/components/dashboard/architectural-output-bento'
+    );
+    const onReset = vi.fn();
+    const onTryAgain = vi.fn();
+
+    render(
+      <ArchitecturalOutputBento
+        selectedCake="Normal Cake — Unfrozen"
+        gasHistory={[40.0, 32.0]}
+        collectedReadings={[
+          {
+            gasResistanceKohm: 40.0,
+            gasResistanceOhm: 40000,
+            temperatureC: 27.4,
+            humidityPercent: 72,
+            pressureHpa: 715,
+            sensorStatus: 'OK',
+            timestamp: '2026-11-11T07:00:00Z',
+          },
+          {
+            gasResistanceKohm: 32.0,
+            gasResistanceOhm: 32000,
+            temperatureC: 27.6,
+            humidityPercent: 86,
+            pressureHpa: 715,
+            sensorStatus: 'OK',
+            timestamp: '2026-11-11T07:00:30Z',
+          },
+        ]}
+        liveTest={{
+          isTestRunning: false,
+          selectedCakeType: 'Normal Cake — Unfrozen',
+          startedAt: '2026-11-11T07:00:00Z',
+          testId: 'TEST-123456',
+          lastSensorReading: {
+            gasResistanceKohm: 32.0,
+            gasResistanceOhm: 32000,
+            temperatureC: 27.6,
+            humidityPercent: 86,
+            pressureHpa: 715,
+            sensorStatus: 'OK',
+            timestamp: '2026-11-11T07:00:30Z',
+          },
+          sensorReadingsCount: 2,
+          verdict: 'Stale',
+          freshnessScore: 51.4,
+          durationSeconds: 30,
+          verdictSubmittedAt: '2026-11-11T07:00:30Z',
+          assessorName: 'Phone Assessor|m:wet_tissue|d:30',
+          materialType: 'wet_tissue',
+        }}
+        onReset={onReset}
+        onTryAgain={onTryAgain}
+        isConnected={true}
+      />
+    );
+
+    expect(screen.getByText('Stale')).toBeInTheDocument();
+    expect(screen.getAllByText('40.00 kΩ').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('-20.00%')).toBeInTheDocument();
+    expect(screen.getByText(/hydroxyl \(OH⁻\)/i)).toBeInTheDocument();
+    expect(screen.getByText('86')).toBeInTheDocument();
+    expect(screen.getByText('27.6')).toBeInTheDocument();
+
+    const tryAgainBtn = screen.getByRole('button', { name: /Try Again/i });
+    fireEvent.click(tryAgainBtn);
+    expect(onTryAgain).toHaveBeenCalledTimes(1);
+  });
 });

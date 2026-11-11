@@ -21,14 +21,18 @@ import {
   FileCheck2,
   Clock,
 } from 'lucide-react';
-import { CakeType, FreshnessVerdict, LiveTestState } from '@/lib/server/live-test-store';
+import { CakeType, FreshnessVerdict, LiveSensorSnapshot, LiveTestState } from '@/lib/server/live-test-store';
+import { ChamberMaterialType, decodeAssessorMeta } from '@/lib/sync/live-sync';
 
 export interface ArchitecturalOutputBentoProps {
   liveTest: LiveTestState | null;
   gasHistory: number[];
+  collectedReadings?: LiveSensorSnapshot[];
   selectedCake: CakeType;
   isTesting?: boolean;
+  isConnected?: boolean;
   onReset: () => void;
+  onTryAgain?: () => void;
   className?: string;
 }
 
@@ -88,12 +92,29 @@ export function Brackets() {
 
 /* -------------------------------------------------------------- component */
 
+export interface SessionFormulaStats {
+  r0Kohm: number | null;
+  endGasKohm: number | null;
+  minGasKohm: number | null;
+  maxGasKohm: number | null;
+  meanGasKohm: number | null;
+  sma5Kohm: number | null;
+  deltaShiftPercent: number | null;
+  meanTempC: number | null;
+  meanHumidity: number | null;
+  meanPressure: number | null;
+  sampleCount: number;
+}
+
 export function ArchitecturalOutputBento({
   liveTest,
   gasHistory,
+  collectedReadings = [],
   selectedCake,
   isTesting = false,
+  isConnected = false,
   onReset,
+  onTryAgain,
   className = '',
 }: ArchitecturalOutputBentoProps) {
   const uid = 'nosenet' + React.useId().replace(/[^a-zA-Z0-9]/g, '');
@@ -101,35 +122,100 @@ export function ArchitecturalOutputBento({
   const verdict = liveTest?.verdict;
   const hasResult = Boolean(verdict);
 
-  // Compute realistic fallback/active sensor readings
+  // Extract genuine collected readings (never overwrite real hardware telemetry with fake constants)
+  const latestCaptured =
+    liveTest?.lastSensorReading ||
+    (collectedReadings.length > 0 ? collectedReadings[collectedReadings.length - 1] : null);
+
+  const gasVals = collectedReadings
+    .map((r) => r.gasResistanceKohm)
+    .filter((v): v is number => v !== null && v !== undefined && Number.isFinite(v));
+  const activeGasVals = gasVals.length > 0 ? gasVals : gasHistory;
+
+  const tempVals = collectedReadings
+    .map((r) => r.temperatureC)
+    .filter((v): v is number => v !== null && v !== undefined && Number.isFinite(v));
+  const humVals = collectedReadings
+    .map((r) => r.humidityPercent)
+    .filter((v): v is number => v !== null && v !== undefined && Number.isFinite(v));
+  const presVals = collectedReadings
+    .map((r) => r.pressureHpa)
+    .filter((v): v is number => v !== null && v !== undefined && Number.isFinite(v));
+
   const currentGasKohm =
-    liveTest?.lastSensorReading?.gasResistanceKohm !== null &&
-    liveTest?.lastSensorReading?.gasResistanceKohm !== undefined
-      ? liveTest.lastSensorReading.gasResistanceKohm
-      : gasHistory.length > 0
-      ? gasHistory[gasHistory.length - 1]
-      : 24.5;
+    latestCaptured?.gasResistanceKohm !== null && latestCaptured?.gasResistanceKohm !== undefined
+      ? latestCaptured.gasResistanceKohm
+      : activeGasVals.length > 0
+      ? activeGasVals[activeGasVals.length - 1]
+      : null;
 
   const currentTempC =
-    liveTest?.lastSensorReading?.temperatureC !== null &&
-    liveTest?.lastSensorReading?.temperatureC !== undefined
-      ? liveTest.lastSensorReading.temperatureC
-      : 28.6;
+    latestCaptured?.temperatureC !== null && latestCaptured?.temperatureC !== undefined
+      ? latestCaptured.temperatureC
+      : tempVals.length > 0
+      ? tempVals[tempVals.length - 1]
+      : null;
 
   const currentHumidity =
-    liveTest?.lastSensorReading?.humidityPercent !== null &&
-    liveTest?.lastSensorReading?.humidityPercent !== undefined
-      ? liveTest.lastSensorReading.humidityPercent
-      : 68;
+    latestCaptured?.humidityPercent !== null && latestCaptured?.humidityPercent !== undefined
+      ? latestCaptured.humidityPercent
+      : humVals.length > 0
+      ? humVals[humVals.length - 1]
+      : null;
 
   const currentPressure =
-    liveTest?.lastSensorReading?.pressureHpa !== null &&
-    liveTest?.lastSensorReading?.pressureHpa !== undefined
-      ? liveTest.lastSensorReading.pressureHpa
-      : 718;
+    latestCaptured?.pressureHpa !== null && latestCaptured?.pressureHpa !== undefined
+      ? latestCaptured.pressureHpa
+      : presVals.length > 0
+      ? presVals[presVals.length - 1]
+      : null;
+
+  const r0Kohm = activeGasVals.length > 0 ? activeGasVals[0] : currentGasKohm;
+  const endGasKohm = activeGasVals.length > 0 ? activeGasVals[activeGasVals.length - 1] : currentGasKohm;
+  const deltaShiftPercent =
+    r0Kohm !== null && endGasKohm !== null && r0Kohm > 0
+      ? Number((((endGasKohm - r0Kohm) / r0Kohm) * 100).toFixed(2))
+      : null;
+  const smaSlice = activeGasVals.slice(-5);
+
+  const sessionStats: SessionFormulaStats = {
+    r0Kohm,
+    endGasKohm,
+    minGasKohm: activeGasVals.length > 0 ? Math.min(...activeGasVals) : currentGasKohm,
+    maxGasKohm: activeGasVals.length > 0 ? Math.max(...activeGasVals) : currentGasKohm,
+    meanGasKohm:
+      activeGasVals.length > 0
+        ? activeGasVals.reduce((a, b) => a + b, 0) / activeGasVals.length
+        : currentGasKohm,
+    sma5Kohm:
+      smaSlice.length > 0
+        ? smaSlice.reduce((a, b) => a + b, 0) / smaSlice.length
+        : currentGasKohm,
+    deltaShiftPercent,
+    meanTempC:
+      tempVals.length > 0
+        ? tempVals.reduce((a, b) => a + b, 0) / tempVals.length
+        : currentTempC,
+    meanHumidity:
+      humVals.length > 0
+        ? humVals.reduce((a, b) => a + b, 0) / humVals.length
+        : currentHumidity,
+    meanPressure:
+      presVals.length > 0
+        ? presVals.reduce((a, b) => a + b, 0) / presVals.length
+        : currentPressure,
+    sampleCount: Math.max(
+      collectedReadings.length,
+      liveTest?.sensorReadingsCount || 0,
+      gasHistory.length
+    ),
+  };
+
+  const decodedMeta = decodeAssessorMeta(liveTest?.assessorName);
+  const materialType: ChamberMaterialType = liveTest?.materialType || decodedMeta.material;
 
   const freshnessIndex =
-    liveTest?.freshnessScore ||
+    liveTest?.freshnessScore ??
     (verdict === 'Fresh'
       ? 94.6
       : verdict === 'Fairly Fresh'
@@ -140,7 +226,7 @@ export function ArchitecturalOutputBento({
       ? 18.4
       : null);
 
-  const testId = liveTest?.testId || 'NN-4091';
+  const testId = liveTest?.testId || 'STANDBY';
 
   return (
     <div className={`ib-root ${className}`} data-theme="dark">
@@ -181,11 +267,15 @@ export function ArchitecturalOutputBento({
             currentTempC={currentTempC}
             currentHumidity={currentHumidity}
             currentPressure={currentPressure}
+            sessionStats={sessionStats}
+            materialType={materialType}
             isTesting={isTesting}
-            readingsCount={liveTest?.sensorReadingsCount || gasHistory.length}
+            isConnected={isConnected}
+            readingsCount={sessionStats.sampleCount}
             onReset={onReset}
+            onTryAgain={onTryAgain}
             testId={testId}
-            durationSeconds={liveTest?.durationSeconds || null}
+            durationSeconds={liveTest?.durationSeconds || decodedMeta.durationSeconds || null}
           />
 
           {/* 2. SUB-BENTO GRID: Telemetry & Flow Architecture */}
@@ -193,7 +283,7 @@ export function ArchitecturalOutputBento({
             {/* Left: Interactive VOC Response Curve Scrubber */}
             <VOCScrubberCard
               uid={uid}
-              gasHistory={gasHistory.length >= 2 ? gasHistory : [24.1, 24.3, 24.5, 24.2, 24.7]}
+              gasHistory={activeGasVals}
               isTesting={isTesting}
               currentGasKohm={currentGasKohm}
             />
@@ -215,18 +305,97 @@ export function ArchitecturalOutputBento({
 
 /* ---------------------------------------------------------------- pieces */
 
+function getResultNarrative(verdict: FreshnessVerdict, materialType: ChamberMaterialType): {
+  tag: string;
+  description: string;
+} {
+  if (materialType === 'dry_tissue') {
+    return {
+      tag: 'MOX Baseline Equilibrium • Zero VOC Shift',
+      description:
+        'Clean-air O₂ chemisorption equilibrium confirmed on the 320°C SnO₂ surface. Relative humidity stayed stable with negligible reducing volatile concentration; baseline resistance R₀ remained steady.',
+    };
+  }
+  if (materialType === 'dry_sponge') {
+    return {
+      tag: 'Low-Volatile Matrix • Moisture Equilibrium',
+      description:
+        'Low-volatile non-fermentative headspace profile measured inside the sealed chamber. Ambient humidity remained stable with zero souring or fermentation acids detected.',
+    };
+  }
+  if (materialType === 'wet_tissue') {
+    if (verdict === 'Spoiled' || verdict === 'Not Fresh') {
+      return {
+        tag: 'High Volatile & Vapor Saturation Plunge',
+        description:
+          'Steep gas resistance drop paired with rising chamber vapor saturation. Reducing organic volatiles reacted aggressively with adsorbed oxygen ions on the heated 320°C SnO₂ layer.',
+      };
+    }
+    return {
+      tag: 'Moisture Adsorption Shift (ΔRH Compensated)',
+      description:
+        'Elevated chamber relative humidity triggered hydroxyl (OH⁻) adsorption on the SnO₂ sensing layer, shifting raw gas resistance downward proportionally with chamber moisture increase.',
+    };
+  }
+  if (materialType === 'wet_sponge') {
+    if (verdict === 'Spoiled' || verdict === 'Not Fresh') {
+      return {
+        tag: 'Severe Moisture & Volatile Depression',
+        description:
+          'Rapid evaporative humidity loading combined with intense surface adsorption depressed R_gas steeply below baseline R₀ across the active headspace sampling window.',
+      };
+    }
+    return {
+      tag: 'Chamber Humidity Saturation Response',
+      description:
+        'High evaporative surface moisture raised chamber RH% and increased hydroxyl conductivity on the BME688 MOX film, producing a sustained downward ΔR/R₀ shift.',
+    };
+  }
+
+  if (verdict === 'Fresh') {
+    return {
+      tag: 'MOX Gas Resistance Normalized',
+      description:
+        'Optimal organoleptic condition. Peak aroma profile with negligible fermentation VOC presence. Confirmed safe for consumption.',
+    };
+  }
+  if (verdict === 'Fairly Fresh') {
+    return {
+      tag: 'Minor Headspace Volatile Drift',
+      description:
+        'Acceptable quality standard. Minor volatile shifts observed. Recommended for consumption within 24 to 48 hours.',
+    };
+  }
+  if (verdict === 'Stale') {
+    return {
+      tag: 'Moderate Volatile Shift Detected',
+      description:
+        'Degraded shelf-life detected. Elevated moisture shift and depletion of natural aroma volatiles. Not recommended for retail serving.',
+    };
+  }
+  return {
+    tag: 'Critical VOC Resistance Plunge',
+    description:
+      'Critical microbial hazard detected. Significant acetic, ethanol, and ammonia volatile byproducts detected in chamber headspace.',
+  };
+}
+
 /* 1. HERO TOP CARD: Official Freshness Verdict (Lead Element) */
 interface FreshnessHeroCardProps {
   verdict: FreshnessVerdict | null;
   freshnessIndex: number | null;
   selectedCake: CakeType;
-  currentGasKohm: number;
-  currentTempC: number;
-  currentHumidity: number;
-  currentPressure: number;
+  currentGasKohm: number | null;
+  currentTempC: number | null;
+  currentHumidity: number | null;
+  currentPressure: number | null;
+  sessionStats: SessionFormulaStats;
+  materialType: ChamberMaterialType;
   isTesting: boolean;
+  isConnected: boolean;
   readingsCount: number;
   onReset: () => void;
+  onTryAgain?: () => void;
   testId: string;
   durationSeconds?: number | null;
 }
@@ -239,9 +408,13 @@ function FreshnessHeroCard({
   currentTempC,
   currentHumidity,
   currentPressure,
+  sessionStats,
+  materialType,
   isTesting,
+  isConnected,
   readingsCount,
   onReset,
+  onTryAgain,
   testId,
   durationSeconds,
 }: FreshnessHeroCardProps) {
@@ -249,6 +422,8 @@ function FreshnessHeroCard({
   const isFairlyFresh = verdict === 'Fairly Fresh';
   const isStale = verdict === 'Stale';
   const isSpoiled = verdict === 'Spoiled' || verdict === 'Not Fresh';
+
+  const narrative = verdict ? getResultNarrative(verdict, materialType) : null;
 
   return (
     <div className="ib-frame ib-frame-hover">
@@ -310,7 +485,7 @@ function FreshnessHeroCard({
                 </div>
 
                 <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-black/60 border border-neutral-800 text-neutral-400">
-                  MOX Gas Resistance Normalized
+                  {narrative?.tag || 'MOX Gas Resistance Normalized'}
                 </span>
               </div>
 
@@ -320,13 +495,7 @@ function FreshnessHeroCard({
               </div>
 
               <p className="text-xs sm:text-sm text-neutral-300 max-w-2xl mt-1 leading-relaxed">
-                {isFresh
-                  ? 'Optimal organoleptic condition. Peak aroma profile with negligible fermentation VOC presence. Confirmed safe for consumption.'
-                  : isFairlyFresh
-                  ? 'Acceptable quality standard. Minor volatile shifts observed. Recommended for consumption within 24 to 48 hours.'
-                  : isStale
-                  ? 'Degraded shelf-life detected. Elevated moisture loss and depletion of natural aroma volatiles. Not recommended for retail serving.'
-                  : 'Critical microbial hazard detected. Significant acetic, ethanol, and ammonia volatile byproducts detected in chamber headspace.'}
+                {narrative?.description}
               </p>
             </div>
 
@@ -370,14 +539,14 @@ function FreshnessHeroCard({
               </div>
             </div>
 
-            {/* 4-Parameter Telemetry Grid */}
+            {/* 4-Parameter Accurate Live Hardware Telemetry Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 font-mono">
               <div className="p-3 rounded-xl bg-black border border-neutral-800/80">
                 <span className="text-[10px] text-neutral-400 uppercase block tracking-wider mb-1">
-                  R_GAS (MOX)
+                  R_GAS (FINAL)
                 </span>
                 <span className="text-base sm:text-lg font-bold text-white tabular-nums">
-                  {currentGasKohm.toFixed(2)}{' '}
+                  {currentGasKohm !== null ? currentGasKohm.toFixed(2) : '--'}{' '}
                   <span className="text-xs text-neutral-400 font-normal">kΩ</span>
                 </span>
               </div>
@@ -387,7 +556,7 @@ function FreshnessHeroCard({
                   CHAMBER TEMP
                 </span>
                 <span className="text-base sm:text-lg font-bold text-white tabular-nums">
-                  {currentTempC.toFixed(1)}{' '}
+                  {currentTempC !== null ? currentTempC.toFixed(1) : '--'}{' '}
                   <span className="text-xs text-neutral-400 font-normal">°C</span>
                 </span>
               </div>
@@ -397,7 +566,7 @@ function FreshnessHeroCard({
                   REL. HUMIDITY
                 </span>
                 <span className="text-base sm:text-lg font-bold text-white tabular-nums">
-                  {currentHumidity.toFixed(0)}{' '}
+                  {currentHumidity !== null ? currentHumidity.toFixed(0) : '--'}{' '}
                   <span className="text-xs text-neutral-400 font-normal">%</span>
                 </span>
               </div>
@@ -407,9 +576,62 @@ function FreshnessHeroCard({
                   PRESSURE
                 </span>
                 <span className="text-base sm:text-lg font-bold text-white tabular-nums">
-                  {currentPressure.toFixed(0)}{' '}
+                  {currentPressure !== null ? currentPressure.toFixed(0) : '--'}{' '}
                   <span className="text-xs text-neutral-400 font-normal">hPa</span>
                 </span>
+              </div>
+            </div>
+
+            {/* Captured Hardware Values & Computed Equation Breakdown */}
+            <div className="p-3.5 rounded-xl bg-neutral-950/90 border border-neutral-800/80 font-mono space-y-2">
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-neutral-400 border-b border-neutral-900 pb-1.5">
+                <span className="font-bold text-neutral-300">
+                  Collected BME688 Metrics &amp; Equation Summary
+                </span>
+                <span>{sessionStats.sampleCount} Hardware Readings</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div>
+                  <span className="text-[10px] text-neutral-500 block">Baseline R₀</span>
+                  <span className="font-bold text-white tabular-nums">
+                    {sessionStats.r0Kohm !== null ? `${sessionStats.r0Kohm.toFixed(2)} kΩ` : '--'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-neutral-500 block">ΔR / R₀ Shift</span>
+                  <span
+                    className={`font-bold tabular-nums ${
+                      sessionStats.deltaShiftPercent === null
+                        ? 'text-neutral-400'
+                        : sessionStats.deltaShiftPercent >= 0
+                        ? 'text-emerald-400'
+                        : 'text-amber-400'
+                    }`}
+                  >
+                    {sessionStats.deltaShiftPercent !== null
+                      ? `${sessionStats.deltaShiftPercent >= 0 ? '+' : ''}${sessionStats.deltaShiftPercent.toFixed(2)}%`
+                      : '--'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-neutral-500 block">Mean R_gas / SMA₅</span>
+                  <span className="font-bold text-cyan-400 tabular-nums">
+                    {sessionStats.meanGasKohm !== null
+                      ? `${sessionStats.meanGasKohm.toFixed(2)} / ${
+                          sessionStats.sma5Kohm !== null ? sessionStats.sma5Kohm.toFixed(2) : '--'
+                        } kΩ`
+                      : '--'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-neutral-500 block">Mean Temp • RH</span>
+                  <span className="font-bold text-neutral-200 tabular-nums">
+                    {sessionStats.meanTempC !== null ? `${sessionStats.meanTempC.toFixed(1)}°C` : '--'} •{' '}
+                    {sessionStats.meanHumidity !== null
+                      ? `${sessionStats.meanHumidity.toFixed(0)}%`
+                      : '--'}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -420,13 +642,24 @@ function FreshnessHeroCard({
                 <span>Audited via SmartElex BME688 MOX gas sensor hardware</span>
               </div>
 
-              <button
-                onClick={onReset}
-                className="py-3 px-5 rounded-xl bg-white text-black font-extrabold text-xs sm:text-sm hover:bg-neutral-200 active:scale-98 transition flex items-center justify-center gap-2 cursor-pointer shadow-lg"
-              >
-                <RotateCcw className="w-4 h-4" />
-                <span>Start New Cake Test</span>
-              </button>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                {onTryAgain && (
+                  <button
+                    onClick={onTryAgain}
+                    className="py-3 px-4 rounded-xl bg-neutral-900 border border-neutral-700 text-white font-bold text-xs sm:text-sm hover:bg-neutral-800 active:scale-98 transition flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span>Try Again</span>
+                  </button>
+                )}
+                <button
+                  onClick={onReset}
+                  className="py-3 px-5 rounded-xl bg-white text-black font-extrabold text-xs sm:text-sm hover:bg-neutral-200 active:scale-98 transition flex items-center justify-center gap-2 cursor-pointer shadow-lg"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Start New Cake Test</span>
+                </button>
+              </div>
             </div>
           </div>
         ) : (
@@ -449,19 +682,31 @@ function FreshnessHeroCard({
 
               <p className="text-xs text-neutral-400 max-w-md mx-auto leading-relaxed">
                 {isTesting
-                  ? `Active MOX sampling in progress (Sample #${readingsCount || 1} • Every 2.5s). The official verdict will be certified automatically.`
+                  ? `Active MOX sampling in progress (Sample #${readingsCount || 0} • Every 2.5s). Press Try Again below if readings stall.`
                   : 'Select cake specimen configuration above and press "RUN TEST" to initiate automated electronic nose diagnostic inspection.'}
               </p>
+
+              {(isTesting || isConnected) && onTryAgain && (
+                <div className="pt-1 flex justify-center">
+                  <button
+                    onClick={onTryAgain}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-neutral-900 border border-neutral-700 hover:border-white text-xs font-bold text-white transition active:scale-95 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{isTesting ? 'Try Again (Restart Test)' : 'Run / Try Test Again'}</span>
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Standby Baseline Parameters */}
+            {/* Standby / Active Baseline Parameters */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 font-mono text-left max-w-2xl mx-auto pt-2">
               <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-900">
                 <span className="text-[10px] text-neutral-500 uppercase block tracking-wider">
                   Baseline R₀
                 </span>
                 <span className="text-sm font-bold text-neutral-200 tabular-nums">
-                  {currentGasKohm.toFixed(2)} kΩ
+                  {currentGasKohm !== null ? `${currentGasKohm.toFixed(2)} kΩ` : '--'}
                 </span>
               </div>
 
@@ -470,7 +715,7 @@ function FreshnessHeroCard({
                   Chamber Temp
                 </span>
                 <span className="text-sm font-bold text-neutral-200 tabular-nums">
-                  {currentTempC.toFixed(1)} °C
+                  {currentTempC !== null ? `${currentTempC.toFixed(1)} °C` : '--'}
                 </span>
               </div>
 
@@ -479,7 +724,7 @@ function FreshnessHeroCard({
                   Humidity
                 </span>
                 <span className="text-sm font-bold text-neutral-200 tabular-nums">
-                  {currentHumidity.toFixed(0)} %
+                  {currentHumidity !== null ? `${currentHumidity.toFixed(0)} %` : '--'}
                 </span>
               </div>
 
@@ -504,7 +749,7 @@ interface VOCScrubberCardProps {
   uid: string;
   gasHistory: number[];
   isTesting: boolean;
-  currentGasKohm: number;
+  currentGasKohm: number | null;
 }
 
 function VOCScrubberCard({ uid, gasHistory, isTesting, currentGasKohm }: VOCScrubberCardProps) {
@@ -514,19 +759,29 @@ function VOCScrubberCard({ uid, gasHistory, isTesting, currentGasKohm }: VOCScru
   const H = 150;
   const pad = 18;
 
-  const vals = gasHistory.length > 1 ? gasHistory : [24.0, 24.3, 24.5, 24.2, 24.8];
+  const hasLivePoints = gasHistory.length > 0;
+  const vals =
+    gasHistory.length >= 2
+      ? gasHistory
+      : gasHistory.length === 1
+      ? [gasHistory[0], gasHistory[0]]
+      : [0, 0];
   const { line, area, points } = chartPaths(vals, W, H, pad);
 
   const fillId = uid + 'vocGradient';
-  const baseline = vals[0] || 24.5;
+  const baseline = hasLivePoints ? vals[0] : null;
 
   const activeIndex = hoverIndex !== null ? hoverIndex : points.length - 1;
   const activePt = points[activeIndex] || points[points.length - 1];
   const activeVal = vals[activeIndex] || vals[vals.length - 1];
 
-  const deltaPercent = Number((((activeVal - baseline) / baseline) * 100).toFixed(1));
+  const deltaPercent =
+    baseline !== null && baseline > 0
+      ? Number((((activeVal - baseline) / baseline) * 100).toFixed(1))
+      : 0;
 
   const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!hasLivePoints) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * W;
     const xs = points.map((p) => p[0]);
@@ -546,7 +801,7 @@ function VOCScrubberCard({ uid, gasHistory, isTesting, currentGasKohm }: VOCScru
             </h3>
           </div>
           <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400">
-            Scrubbable Graph
+            {hasLivePoints ? 'Scrubbable Graph' : isTesting ? 'Awaiting Samples' : 'Standby'}
           </span>
         </div>
 
@@ -581,19 +836,20 @@ function VOCScrubberCard({ uid, gasHistory, isTesting, currentGasKohm }: VOCScru
             ))}
 
             {/* Area Fill */}
-            <path d={area} fill={`url(#${fillId})`} />
+            {hasLivePoints && <path d={area} fill={`url(#${fillId})`} />}
 
             {/* Main Smooth Line Path */}
             <path
               d={line}
               fill="none"
-              stroke="#06b6d4"
+              stroke={hasLivePoints ? '#06b6d4' : '#3f3f46'}
               strokeWidth="2"
+              strokeDasharray={hasLivePoints ? undefined : '4 4'}
               className="ib-line-draw"
             />
 
             {/* Active Pointer Hover Line */}
-            {hoverIndex !== null && (
+            {hasLivePoints && hoverIndex !== null && (
               <line
                 x1={activePt[0]}
                 x2={activePt[0]}
@@ -607,45 +863,60 @@ function VOCScrubberCard({ uid, gasHistory, isTesting, currentGasKohm }: VOCScru
             )}
 
             {/* Active Point Circle Indicator */}
-            <circle
-              cx={activePt[0]}
-              cy={activePt[1]}
-              r="4"
-              fill="#09090b"
-              stroke="#06b6d4"
-              strokeWidth="2"
-            />
+            {hasLivePoints && (
+              <circle
+                cx={activePt[0]}
+                cy={activePt[1]}
+                r="4"
+                fill="#09090b"
+                stroke="#06b6d4"
+                strokeWidth="2"
+              />
+            )}
 
             {/* Scrub Tooltip Floating Badge */}
-            <g
-              transform={`translate(${clamp(activePt[0], 65, W - 65)}, ${
-                activePt[1] < 34 ? activePt[1] + 24 : activePt[1] - 14
-              })`}
-            >
-              <rect
-                x="-58"
-                y="-11"
-                width="116"
-                height="19"
-                rx="4"
-                fill="#09090b"
-                stroke="#27272a"
-                strokeWidth="1"
-              />
-              <text
-                x="0"
-                y="2"
-                textAnchor="middle"
-                fontSize="8.5"
-                fill="#f4f4f5"
-                fontFamily="var(--ib-mono)"
-                fontWeight="bold"
+            {hasLivePoints ? (
+              <g
+                transform={`translate(${clamp(activePt[0], 65, W - 65)}, ${
+                  activePt[1] < 34 ? activePt[1] + 24 : activePt[1] - 14
+                })`}
               >
-                {`T+${(activeIndex * 2.5).toFixed(1)}s · ${activeVal.toFixed(2)} kΩ (${
-                  deltaPercent >= 0 ? '+' : ''
-                }${deltaPercent}%)`}
+                <rect
+                  x="-58"
+                  y="-11"
+                  width="116"
+                  height="19"
+                  rx="4"
+                  fill="#09090b"
+                  stroke="#27272a"
+                  strokeWidth="1"
+                />
+                <text
+                  x="0"
+                  y="2"
+                  textAnchor="middle"
+                  fontSize="8.5"
+                  fill="#f4f4f5"
+                  fontFamily="var(--ib-mono)"
+                  fontWeight="bold"
+                >
+                  {`T+${(activeIndex * 2.5).toFixed(1)}s · ${activeVal.toFixed(2)} kΩ (${
+                    deltaPercent >= 0 ? '+' : ''
+                  }${deltaPercent}%)`}
+                </text>
+              </g>
+            ) : (
+              <text
+                x={W / 2}
+                y={H / 2 - 12}
+                textAnchor="middle"
+                fontSize="10"
+                fill="#71717a"
+                fontFamily="var(--ib-mono)"
+              >
+                Waiting for live ESP32 BME688 readings...
               </text>
-            </g>
+            )}
           </svg>
         </div>
 
@@ -653,22 +924,28 @@ function VOCScrubberCard({ uid, gasHistory, isTesting, currentGasKohm }: VOCScru
         <div className="grid grid-cols-3 gap-2 pt-1 border-t border-neutral-800/80 text-left font-mono">
           <div className="p-2 rounded bg-neutral-950 border border-neutral-900">
             <span className="text-[10px] text-neutral-500 uppercase block">Chamber R₀</span>
-            <span className="text-xs font-bold text-white tabular-nums">{baseline.toFixed(2)} kΩ</span>
+            <span className="text-xs font-bold text-white tabular-nums">
+              {baseline !== null ? `${baseline.toFixed(2)} kΩ` : '--'}
+            </span>
           </div>
           <div className="p-2 rounded bg-neutral-950 border border-neutral-900">
             <span className="text-[10px] text-neutral-500 uppercase block">Current R_gas</span>
             <span className="text-xs font-bold text-cyan-400 tabular-nums">
-              {currentGasKohm.toFixed(2)} kΩ
+              {currentGasKohm !== null ? `${currentGasKohm.toFixed(2)} kΩ` : '--'}
             </span>
           </div>
           <div className="p-2 rounded bg-neutral-950 border border-neutral-900">
             <span className="text-[10px] text-neutral-500 uppercase block">ΔR / R₀ Shift</span>
             <span
               className={`text-xs font-bold tabular-nums ${
-                deltaPercent >= 0 ? 'text-emerald-400' : 'text-amber-400'
+                !hasLivePoints
+                  ? 'text-neutral-500'
+                  : deltaPercent >= 0
+                  ? 'text-emerald-400'
+                  : 'text-amber-400'
               }`}
             >
-              {deltaPercent >= 0 ? `+${deltaPercent}` : deltaPercent}%
+              {hasLivePoints ? `${deltaPercent >= 0 ? `+${deltaPercent}` : deltaPercent}%` : '--'}
             </span>
           </div>
         </div>

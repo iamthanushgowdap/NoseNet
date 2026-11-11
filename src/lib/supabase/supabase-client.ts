@@ -1,5 +1,6 @@
 // Dedicated Supabase PostgreSQL Database Adapter for NoseNet
 import { CakeType, FreshnessVerdict, LiveTestState } from '@/lib/server/live-test-store';
+import { decodeAssessorMeta } from '@/lib/sync/live-sync';
 
 export const SUPABASE_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://vmgfolcjthkxnisvadzu.supabase.co';
@@ -29,6 +30,7 @@ export async function getSupabaseLiveState(): Promise<LiveTestState | null> {
     const rows = await res.json();
     if (rows && rows.length > 0) {
       const row = rows[0];
+      const decoded = decodeAssessorMeta(row.assessor_name);
       return {
         isTestRunning: Boolean(row.is_test_running),
         selectedCakeType: (row.selected_cake_type as CakeType) || 'Normal Cake — Unfrozen',
@@ -38,8 +40,10 @@ export async function getSupabaseLiveState(): Promise<LiveTestState | null> {
         sensorReadingsCount: 0,
         verdict: (row.verdict as FreshnessVerdict) || null,
         freshnessScore: row.freshness_score !== null && row.freshness_score !== undefined ? Number(row.freshness_score) : null,
+        durationSeconds: decoded.durationSeconds,
         verdictSubmittedAt: row.verdict_submitted_at || null,
         assessorName: row.assessor_name || null,
+        materialType: decoded.material,
       };
     }
   } catch {}

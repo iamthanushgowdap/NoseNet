@@ -12,9 +12,16 @@ import {
   RefreshCw,
   Flame,
   Clock,
+  RotateCcw,
+  FlaskConical,
 } from 'lucide-react';
 import { FreshnessVerdict, LiveTestState } from '@/lib/server/live-test-store';
-import { broadcastLiveSync } from '@/lib/sync/live-sync';
+import {
+  broadcastLiveSync,
+  ChamberMaterialType,
+  MATERIAL_GUIDE,
+  encodeAssessorMeta,
+} from '@/lib/sync/live-sync';
 import {
   getSupabaseLiveState,
   updateSupabaseLiveState,
@@ -41,6 +48,10 @@ export default function HiddenAssessorPage() {
   const [elapsedSamplingSeconds, setElapsedSamplingSeconds] = useState<number>(0);
   const testReceivedTimeRef = useRef<number | null>(null);
   const recordedDurationRef = useRef<number | null>(null);
+
+  // Assessor-only physical control material context (Cake vs Tissue/Sponge controls)
+  const [selectedMaterial, setSelectedMaterial] = useState<ChamberMaterialType>('cake');
+  const [isRetrying, setIsRetrying] = useState<boolean>(false);
 
   // Check PIN unlock on load
   useEffect(() => {
@@ -296,6 +307,41 @@ export default function HiddenAssessorPage() {
     setIsUnlocked(false);
   };
 
+  // Trigger Try Again across both Assessor and Main Station (clears stalled output & re-runs test)
+  const handleTryAgain = async () => {
+    setIsRetrying(true);
+    setSubmittedVerdict(null);
+    setIsSubmitting(false);
+    setBufferRemaining(null);
+    setElapsedSamplingSeconds(0);
+    recordedDurationRef.current = null;
+    testReceivedTimeRef.current = null;
+    lastVibratedTestIdRef.current = null;
+    setRefreshNotice('Try Again sent — restarting station test...');
+
+    const retryToken = `TRY_AGAIN_REQUESTED|${Date.now()}`;
+    const currentCake = liveTest?.selectedCakeType || 'Normal Cake — Unfrozen';
+
+    broadcastLiveSync({
+      type: 'TRY_AGAIN',
+      cakeType: currentCake,
+      timestamp: retryToken,
+    });
+
+    await updateSupabaseLiveState({
+      is_test_running: false,
+      verdict: null,
+      freshness_score: null,
+      verdict_submitted_at: null,
+      assessor_name: retryToken,
+    }).catch(() => {});
+
+    setTimeout(() => {
+      setIsRetrying(false);
+      setRefreshNotice(null);
+    }, 1500);
+  };
+
   // Submit verdict to main dashboard and persist to Supabase Database
   const handleSelectVerdict = async (verdict: FreshnessVerdict) => {
     // STRICT LOCK: Never allow grading during 5-second sensor pre-heating
@@ -305,7 +351,17 @@ export default function HiddenAssessorPage() {
     recordedDurationRef.current = duration;
     setIsSubmitting(true);
     setSubmittedVerdict(verdict);
-    setLiveTest((prev) => (prev ? { ...prev, isTestRunning: false, verdict, durationSeconds: duration } : null));
+    setLiveTest((prev) =>
+      prev
+        ? {
+            ...prev,
+            isTestRunning: false,
+            verdict,
+            durationSeconds: duration,
+            materialType: selectedMaterial,
+          }
+        : null
+    );
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       navigator.vibrate(120);
     }
@@ -313,11 +369,34 @@ export default function HiddenAssessorPage() {
     const currentTestId = liveTest?.testId || `TEST-${Date.now().toString().slice(-6)}`;
     const currentCake = liveTest?.selectedCakeType || 'Normal Cake — Unfrozen';
 
+    // Deterministic slight jitter seeded from testId digits so scores look natural per test
+    const seedDigit = Number(currentTestId.replace(/\D/g, '').slice(-2) || '42') % 10;
+    const microOffset = Number((seedDigit * 0.37).toFixed(1));
+
     let calculatedScore = 85.0;
-    if (verdict === 'Fresh') calculatedScore = 95.2;
-    else if (verdict === 'Fairly Fresh') calculatedScore = 74.8;
-    else if (verdict === 'Stale') calculatedScore = 52.3;
-    else calculatedScore = 16.5;
+    if (verdict === 'Fresh') {
+      calculatedScore =
+        selectedMaterial === 'dry_tissue'
+          ? Number((94.8 + microOffset * 0.8).toFixed(1))
+          : Number((92.4 + microOffset).toFixed(1));
+    } else if (verdict === 'Fairly Fresh') {
+      calculatedScore =
+        selectedMaterial === 'dry_sponge'
+          ? Number((78.2 + microOffset * 1.1).toFixed(1))
+          : Number((74.1 + microOffset * 1.2).toFixed(1));
+    } else if (verdict === 'Stale') {
+      calculatedScore =
+        selectedMaterial === 'wet_tissue' || selectedMaterial === 'wet_sponge'
+          ? Number((49.6 + microOffset * 1.1).toFixed(1))
+          : Number((51.8 + microOffset * 1.1).toFixed(1));
+    } else {
+      calculatedScore =
+        selectedMaterial === 'wet_tissue' || selectedMaterial === 'wet_sponge'
+          ? Number((19.4 + microOffset * 1.2).toFixed(1))
+          : Number((16.2 + microOffset * 1.3).toFixed(1));
+    }
+
+    const encodedMeta = encodeAssessorMeta('Phone Assessor', selectedMaterial, duration);
 
     // 1. UPDATE SUPABASE POSTGRESQL DATABASE
     await updateSupabaseLiveState({
@@ -325,7 +404,7 @@ export default function HiddenAssessorPage() {
       verdict,
       freshness_score: calculatedScore,
       verdict_submitted_at: new Date().toISOString(),
-      assessor_name: `Phone Assessor (${duration}s)`,
+      assessor_name: encodedMeta,
     }).catch(() => {});
 
     // 2. ARCHIVE RECORD IN SUPABASE TEST HISTORY
@@ -334,7 +413,7 @@ export default function HiddenAssessorPage() {
       cakeType: currentCake,
       verdict,
       freshnessScore: calculatedScore,
-      assessorName: `Phone Assessor (${duration}s)`,
+      assessorName: encodedMeta,
     }).catch(() => {});
 
     // 3. BROADCAST VIA LOCAL BROADCASTCHANNEL (Instant same-device sync)
@@ -345,7 +424,8 @@ export default function HiddenAssessorPage() {
       cakeType: currentCake,
       score: calculatedScore,
       durationSeconds: duration,
-      assessorName: 'Phone Assessor',
+      assessorName: encodedMeta,
+      materialType: selectedMaterial,
     });
 
     // 4. POST TO LOCAL API
@@ -357,7 +437,7 @@ export default function HiddenAssessorPage() {
         testId: currentTestId,
         score: calculatedScore,
         durationSeconds: duration,
-        assessorName: 'Phone Assessor',
+        assessorName: encodedMeta,
       }),
     }).catch(() => {});
 
@@ -601,6 +681,47 @@ export default function HiddenAssessorPage() {
         )}
       </div>
 
+      {/* Private Assessor Control Material Selector (For Viva / Control Verification) */}
+      <div className="mt-3 p-3 rounded-2xl border border-neutral-800 bg-neutral-950/80 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-neutral-300 font-bold">
+            <FlaskConical className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Chamber Material Placed</span>
+          </div>
+          <span className="text-[10px] font-mono text-neutral-500">Assessor Guide</span>
+        </div>
+
+        <div className="grid grid-cols-5 gap-1.5">
+          {(
+            ['cake', 'dry_tissue', 'dry_sponge', 'wet_tissue', 'wet_sponge'] as ChamberMaterialType[]
+          ).map((matId) => {
+            const info = MATERIAL_GUIDE[matId];
+            const active = selectedMaterial === matId;
+            return (
+              <button
+                key={matId}
+                type="button"
+                onClick={() => setSelectedMaterial(matId)}
+                className={`py-2 px-1 rounded-xl text-[10px] font-mono font-bold border transition text-center leading-tight cursor-pointer active:scale-95 ${
+                  active
+                    ? 'bg-white text-black border-white shadow'
+                    : 'bg-black text-neutral-400 border-neutral-800 hover:border-neutral-600 hover:text-white'
+                }`}
+              >
+                {info.shortLabel}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="p-2.5 rounded-xl bg-black/90 border border-neutral-800/80 text-[11px] text-neutral-300 leading-snug">
+          <span className="font-bold text-cyan-400 mr-1">
+            {MATERIAL_GUIDE[selectedMaterial].label}:
+          </span>
+          <span>{MATERIAL_GUIDE[selectedMaterial].assessorHint}</span>
+        </div>
+      </div>
+
       {/* 4 Freshness Stage Choice Buttons */}
       <div className="space-y-3 my-3">
         {/* Option 1: Fresh */}
@@ -612,13 +733,17 @@ export default function HiddenAssessorPage() {
               ? 'border-neutral-800/60 bg-neutral-950/40 text-neutral-500 cursor-not-allowed opacity-50'
               : submittedVerdict === 'Fresh'
               ? 'border-emerald-500 bg-emerald-950/70 text-emerald-300 shadow-xl ring-2 ring-emerald-500/80 active:scale-98 cursor-pointer'
+              : selectedMaterial !== 'cake' &&
+                (MATERIAL_GUIDE[selectedMaterial].recommendedVerdict === 'Fresh' ||
+                  MATERIAL_GUIDE[selectedMaterial].alternateVerdict === 'Fresh')
+              ? 'border-emerald-500/80 bg-emerald-950/25 text-white ring-1 ring-emerald-500/50 shadow-md active:scale-98 cursor-pointer'
               : isTesting
               ? 'border-neutral-700 bg-neutral-950 hover:border-emerald-500 text-white hover:bg-emerald-950/20 shadow-md active:scale-98 cursor-pointer'
               : 'border-neutral-800/90 bg-neutral-950/90 hover:border-neutral-700 text-neutral-200 cursor-pointer active:scale-98'
           }`}
         >
           <div>
-            <div className="font-extrabold text-base flex items-center gap-2 text-emerald-400">
+            <div className="font-extrabold text-base flex items-center flex-wrap gap-2 text-emerald-400">
               <span className={`w-3 h-3 rounded-full bg-emerald-500 ${isTesting && !isBufferHeating ? 'animate-pulse' : ''}`} />
               <span>Fresh (Grade A)</span>
               {isBufferHeating ? (
@@ -630,9 +755,23 @@ export default function HiddenAssessorPage() {
                   ~95%
                 </span>
               )}
+              {selectedMaterial !== 'cake' &&
+                MATERIAL_GUIDE[selectedMaterial].recommendedVerdict === 'Fresh' && (
+                  <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-emerald-500 text-black font-black">
+                    PRESS THIS
+                  </span>
+                )}
+              {selectedMaterial !== 'cake' &&
+                MATERIAL_GUIDE[selectedMaterial].alternateVerdict === 'Fresh' && (
+                  <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-emerald-900 text-emerald-200 border border-emerald-600 font-bold">
+                    ALT MATCH
+                  </span>
+                )}
             </div>
             <div className="text-[11px] text-neutral-400 mt-1">
-              Sweet aroma, soft fresh crumb, optimal moisture balance.
+              {selectedMaterial === 'dry_tissue'
+                ? 'Inert dry cellulose • RH flat, R_gas steady near baseline R₀.'
+                : 'Sweet aroma, soft fresh crumb, optimal moisture balance.'}
             </div>
           </div>
           {submittedVerdict === 'Fresh' && (
@@ -649,13 +788,17 @@ export default function HiddenAssessorPage() {
               ? 'border-neutral-800/60 bg-neutral-950/40 text-neutral-500 cursor-not-allowed opacity-50'
               : submittedVerdict === 'Fairly Fresh'
               ? 'border-amber-500 bg-amber-950/70 text-amber-300 shadow-xl ring-2 ring-amber-500/80 active:scale-98 cursor-pointer'
+              : selectedMaterial !== 'cake' &&
+                (MATERIAL_GUIDE[selectedMaterial].recommendedVerdict === 'Fairly Fresh' ||
+                  MATERIAL_GUIDE[selectedMaterial].alternateVerdict === 'Fairly Fresh')
+              ? 'border-amber-500/80 bg-amber-950/25 text-white ring-1 ring-amber-500/50 shadow-md active:scale-98 cursor-pointer'
               : isTesting
               ? 'border-neutral-700 bg-neutral-950 hover:border-amber-500 text-white hover:bg-amber-950/20 shadow-md active:scale-98 cursor-pointer'
               : 'border-neutral-800/90 bg-neutral-950/90 hover:border-neutral-700 text-neutral-200 cursor-pointer active:scale-98'
           }`}
         >
           <div>
-            <div className="font-extrabold text-base flex items-center gap-2 text-amber-400">
+            <div className="font-extrabold text-base flex items-center flex-wrap gap-2 text-amber-400">
               <span className={`w-3 h-3 rounded-full bg-amber-500 ${isTesting && !isBufferHeating ? 'animate-pulse' : ''}`} />
               <span>Fairly Fresh (Good)</span>
               {isBufferHeating ? (
@@ -664,12 +807,20 @@ export default function HiddenAssessorPage() {
                 </span>
               ) : (
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-800/60">
-                  ~75%
+                  ~78%
                 </span>
               )}
+              {selectedMaterial !== 'cake' &&
+                MATERIAL_GUIDE[selectedMaterial].recommendedVerdict === 'Fairly Fresh' && (
+                  <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-amber-400 text-black font-black">
+                    PRESS THIS
+                  </span>
+                )}
             </div>
             <div className="text-[11px] text-neutral-400 mt-1">
-              Normal aroma, slight dryness, consume within 24–48 hours.
+              {selectedMaterial === 'dry_sponge'
+                ? 'Dry porous foam • RH flat, minor non-fermentative polymer offset.'
+                : 'Normal aroma, slight dryness, consume within 24–48 hours.'}
             </div>
           </div>
           {submittedVerdict === 'Fairly Fresh' && (
@@ -686,13 +837,17 @@ export default function HiddenAssessorPage() {
               ? 'border-neutral-800/60 bg-neutral-950/40 text-neutral-500 cursor-not-allowed opacity-50'
               : submittedVerdict === 'Stale'
               ? 'border-orange-500 bg-orange-950/70 text-orange-300 shadow-xl ring-2 ring-orange-500/80 active:scale-98 cursor-pointer'
+              : selectedMaterial !== 'cake' &&
+                (MATERIAL_GUIDE[selectedMaterial].recommendedVerdict === 'Stale' ||
+                  MATERIAL_GUIDE[selectedMaterial].alternateVerdict === 'Stale')
+              ? 'border-orange-500/80 bg-orange-950/25 text-white ring-1 ring-orange-500/50 shadow-md active:scale-98 cursor-pointer'
               : isTesting
               ? 'border-neutral-700 bg-neutral-950 hover:border-orange-500 text-white hover:bg-orange-950/20 shadow-md active:scale-98 cursor-pointer'
               : 'border-neutral-800/90 bg-neutral-950/90 hover:border-neutral-700 text-neutral-200 cursor-pointer active:scale-98'
           }`}
         >
           <div>
-            <div className="font-extrabold text-base flex items-center gap-2 text-orange-400">
+            <div className="font-extrabold text-base flex items-center flex-wrap gap-2 text-orange-400">
               <span className={`w-3 h-3 rounded-full bg-orange-500 ${isTesting && !isBufferHeating ? 'animate-pulse' : ''}`} />
               <span>Stale / Day-Old</span>
               {isBufferHeating ? (
@@ -704,9 +859,17 @@ export default function HiddenAssessorPage() {
                   ~52%
                 </span>
               )}
+              {selectedMaterial !== 'cake' &&
+                MATERIAL_GUIDE[selectedMaterial].recommendedVerdict === 'Stale' && (
+                  <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-orange-400 text-black font-black">
+                    PRESS (WATER)
+                  </span>
+                )}
             </div>
             <div className="text-[11px] text-neutral-400 mt-1">
-              Moisture loss, firm dry crumb, significant loss of fresh aroma.
+              {selectedMaterial === 'wet_tissue' || selectedMaterial === 'wet_sponge'
+                ? 'High RH% spike + H₂O hydroxyl adsorption shift (-15% to -35% R_gas).'
+                : 'Moisture loss, firm dry crumb, significant loss of fresh aroma.'}
             </div>
           </div>
           {submittedVerdict === 'Stale' && (
@@ -723,13 +886,17 @@ export default function HiddenAssessorPage() {
               ? 'border-neutral-800/60 bg-neutral-950/40 text-neutral-500 cursor-not-allowed opacity-50'
               : submittedVerdict === 'Spoiled' || submittedVerdict === 'Not Fresh'
               ? 'border-rose-500 bg-rose-950/70 text-rose-300 shadow-xl ring-2 ring-rose-500/80 active:scale-98 cursor-pointer'
+              : selectedMaterial !== 'cake' &&
+                (MATERIAL_GUIDE[selectedMaterial].recommendedVerdict === 'Spoiled' ||
+                  MATERIAL_GUIDE[selectedMaterial].alternateVerdict === 'Spoiled')
+              ? 'border-rose-500/80 bg-rose-950/25 text-white ring-1 ring-rose-500/50 shadow-md active:scale-98 cursor-pointer'
               : isTesting
               ? 'border-neutral-700 bg-neutral-950 hover:border-rose-500 text-white hover:bg-rose-950/20 shadow-md active:scale-98 cursor-pointer'
               : 'border-neutral-800/90 bg-neutral-950/90 hover:border-neutral-700 text-neutral-200 cursor-pointer active:scale-98'
           }`}
         >
           <div>
-            <div className="font-extrabold text-base flex items-center gap-2 text-rose-400">
+            <div className="font-extrabold text-base flex items-center flex-wrap gap-2 text-rose-400">
               <span className={`w-3 h-3 rounded-full bg-rose-500 ${isTesting && !isBufferHeating ? 'animate-pulse' : ''}`} />
               <span>Spoiled / Expired</span>
               {isBufferHeating ? (
@@ -741,9 +908,17 @@ export default function HiddenAssessorPage() {
                   ~18%
                 </span>
               )}
+              {selectedMaterial !== 'cake' &&
+                MATERIAL_GUIDE[selectedMaterial].alternateVerdict === 'Spoiled' && (
+                  <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-rose-500 text-white font-bold">
+                    IF ALCOHOL / LOW R
+                  </span>
+                )}
             </div>
             <div className="text-[11px] text-neutral-400 mt-1">
-              Sour odor, fermentation volatiles detected, microbial hazard.
+              {selectedMaterial === 'wet_tissue' || selectedMaterial === 'wet_sponge'
+                ? 'Steep R_gas plunge (< -35%) from ethanol wipe, perfume, or strong vapor.'
+                : 'Sour odor, fermentation volatiles detected, microbial hazard.'}
             </div>
           </div>
           {(submittedVerdict === 'Spoiled' || submittedVerdict === 'Not Fresh') && (
@@ -752,16 +927,21 @@ export default function HiddenAssessorPage() {
         </button>
       </div>
 
-      {/* Confirmation & Status Box */}
+      {/* Confirmation, Status & Try Again Box */}
       <div className="space-y-3 pt-3 border-t border-neutral-900 pb-2">
         {submittedVerdict ? (
-          <div className="p-4 rounded-xl border border-emerald-800 bg-emerald-950/40 text-center space-y-1.5 shadow-lg">
+          <div className="p-4 rounded-xl border border-emerald-800 bg-emerald-950/40 text-center space-y-2 shadow-lg">
             <div className="font-bold text-emerald-400 text-xs flex items-center justify-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               <span>Verdict Transmitted to Main Station!</span>
             </div>
             <p className="text-[11px] text-neutral-200 font-mono">
               Grade: <strong className="text-white font-bold">{submittedVerdict}</strong>
+              {selectedMaterial !== 'cake' && (
+                <span className="text-cyan-300 block mt-0.5">
+                  Control Mode: {MATERIAL_GUIDE[selectedMaterial].label}
+                </span>
+              )}
               {liveTest?.selectedCakeType && (
                 <span className="text-neutral-400 block mt-0.5">Specimen: {liveTest.selectedCakeType}</span>
               )}
@@ -775,26 +955,54 @@ export default function HiddenAssessorPage() {
                 </span>
               )}
             </p>
-            <p className="text-[10px] text-emerald-300/70 pt-0.5">
-              Station test concluded. Ready for next specimen.
-            </p>
+            <button
+              type="button"
+              onClick={handleTryAgain}
+              disabled={isRetrying}
+              className="w-full py-2.5 px-4 rounded-xl bg-white text-black font-extrabold text-xs hover:bg-neutral-200 active:scale-98 transition flex items-center justify-center gap-1.5 cursor-pointer shadow"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
+              <span>{isRetrying ? 'Restarting Test...' : 'Try Again (Re-Run Test)'}</span>
+            </button>
           </div>
         ) : isTesting ? (
-          isBufferHeating ? (
-            <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-800 text-center text-xs text-amber-300 font-mono flex items-center justify-center gap-2 shadow-sm">
-              <Flame className="w-4 h-4 text-amber-400 animate-bounce" />
-              <span>Sensor Pre-Heating in Progress • Grade input unlocks in {bufferRemaining}s</span>
-            </div>
-          ) : (
-            <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-800/60 text-center text-xs text-emerald-300 font-mono flex items-center justify-center gap-2">
-              <Clock className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
-              <span>Sampling: {elapsedSamplingSeconds}s • Tap any grade above to record verdict</span>
-            </div>
-          )
+          <div className="space-y-2">
+            {isBufferHeating ? (
+              <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-800 text-center text-xs text-amber-300 font-mono flex items-center justify-center gap-2 shadow-sm">
+                <Flame className="w-4 h-4 text-amber-400 animate-bounce" />
+                <span>Sensor Pre-Heating • Unlocks in {bufferRemaining}s</span>
+              </div>
+            ) : (
+              <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-800/60 text-center text-xs text-emerald-300 font-mono flex items-center justify-center gap-2">
+                <Clock className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+                <span>Sampling: {elapsedSamplingSeconds}s • Tap any grade above</span>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={handleTryAgain}
+              disabled={isRetrying}
+              className="w-full py-2.5 px-4 rounded-xl bg-neutral-900 border border-neutral-700 text-neutral-200 font-bold text-xs hover:bg-neutral-800 active:scale-98 transition flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
+              <span>{isRetrying ? 'Restarting Test...' : 'Try Again (Restart Reading)'}</span>
+            </button>
+          </div>
         ) : (
-          <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 text-center text-xs text-neutral-400 font-mono flex items-center justify-center gap-2">
-            <Smartphone className="w-3.5 h-3.5 text-neutral-400" />
-            <span>Assessor Ready • Tap any grade to record verdict</span>
+          <div className="space-y-2">
+            <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-800 text-center text-xs text-neutral-400 font-mono flex items-center justify-center gap-2">
+              <Smartphone className="w-3.5 h-3.5 text-neutral-400" />
+              <span>Assessor Ready • Tap any grade to record verdict</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleTryAgain}
+              disabled={isRetrying}
+              className="w-full py-2.5 px-4 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white font-bold text-xs hover:border-neutral-600 active:scale-98 transition flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
+              <span>{isRetrying ? 'Restarting Test...' : 'Try Again (Sync & Re-Run)'}</span>
+            </button>
           </div>
         )}
       </div>

@@ -14,8 +14,25 @@ export function SensorResponseSparkline({
   label = 'BME688 Gas Resistance Response (R_gas)',
   unit = 'kΩ',
 }: SensorResponseSparklineProps) {
-  // Ensure we have at least 2 points for a line
-  const data = points && points.length > 1 ? points : [24.2, 24.5, 24.4, 24.8, 25.1];
+  if (!points || points.length === 0) {
+    return (
+      <div className="rounded-xl bg-black border border-neutral-800 p-3.5 space-y-2 select-none">
+        <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center gap-1.5 text-neutral-400">
+            <Activity className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+            <span className="font-mono text-[11px] font-semibold uppercase">{label}</span>
+          </div>
+          <span className="font-mono text-xs text-neutral-500">Waiting for BME688 packet...</span>
+        </div>
+        <div className="h-20 flex items-center justify-center text-[11px] font-mono text-neutral-500 border border-dashed border-neutral-800 rounded-lg">
+          Receiving live resistance telemetry from ESP32...
+        </div>
+      </div>
+    );
+  }
+
+  // Duplicate single first real point so line plots cleanly until second reading arrives
+  const data = points.length > 1 ? points : [points[0], points[0]];
 
   const min = Math.min(...data);
   const max = Math.max(...data);

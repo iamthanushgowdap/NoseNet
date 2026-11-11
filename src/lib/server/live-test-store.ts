@@ -1,5 +1,5 @@
 // In-memory + Supabase PostgreSQL live test store for instant cross-device synchronization
-import { broadcastLiveSync, LiveSyncEvent } from '@/lib/sync/live-sync';
+import { broadcastLiveSync, ChamberMaterialType } from '@/lib/sync/live-sync';
 import {
   getSupabaseLiveState,
   updateSupabaseLiveState,
@@ -36,6 +36,7 @@ export interface LiveTestState {
   durationSeconds?: number | null;
   verdictSubmittedAt: string | null;
   assessorName: string | null;
+  materialType?: ChamberMaterialType | null;
 }
 
 declare global {
