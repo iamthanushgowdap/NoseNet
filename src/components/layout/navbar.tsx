@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Activity, Lock } from 'lucide-react';
 import { AssessorPinModal } from '@/components/auth/assessor-pin-modal';
+import { ThemeToggle } from '@/components/layout/theme-toggle';
 
 export function Navbar() {
   const pathname = usePathname();
@@ -92,6 +93,9 @@ export function Navbar() {
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span className="hidden sm:inline">Monitoring </span>Station
             </span>
+
+            {/* Theme Toggle (Black <-> White) */}
+            <ThemeToggle />
 
             {/* Lock / Log Out Button */}
             <button

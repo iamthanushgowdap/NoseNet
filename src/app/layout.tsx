@@ -34,7 +34,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'black-translucent',
+    statusBarStyle: 'default',
     title: 'NoseNet',
   },
 };
@@ -45,7 +45,6 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
-  themeColor: '#000000',
 };
 
 export default function RootLayout({
@@ -54,13 +53,30 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`dark bg-black ${geistSans.variable} ${geistMono.variable}`}>
-      <body className="bg-black text-white flex flex-col min-h-screen selection:bg-neutral-800 selection:text-white antialiased font-sans">
+    <html lang="en" className={`light ${geistSans.variable} ${geistMono.variable}`} data-theme="light" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var saved = localStorage.getItem('nosenet_theme');
+                  var theme = saved === 'dark' ? 'dark' : 'light';
+                  document.documentElement.classList.remove('dark', 'light');
+                  document.documentElement.classList.add(theme);
+                  document.documentElement.setAttribute('data-theme', theme);
+                } catch (e) {}
+              })();
+            `,
+          }}
+        />
+      </head>
+      <body className="flex flex-col min-h-screen antialiased font-sans">
         <AppProvider>
-          <Suspense fallback={<div className="h-16 border-b border-neutral-800 bg-black" />}>
+          <Suspense fallback={<div className="h-16 border-b border-neutral-200 dark:border-neutral-800" />}>
             <Navbar />
           </Suspense>
-          <main className="flex-1 flex flex-col bg-black text-white w-full">{children}</main>
+          <main className="flex-1 flex flex-col w-full">{children}</main>
           <Suspense fallback={null}>
             <Footer />
           </Suspense>

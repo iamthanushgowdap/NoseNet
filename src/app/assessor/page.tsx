@@ -27,6 +27,7 @@ import {
   updateSupabaseLiveState,
   insertSupabaseTestRecord,
 } from '@/lib/supabase/supabase-client';
+import { ThemeToggle } from '@/components/layout/theme-toggle';
 
 export default function HiddenAssessorPage() {
   // PIN lock protection (Password: 11111)
@@ -584,6 +585,8 @@ export default function HiddenAssessorPage() {
               <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-emerald-400' : 'text-neutral-400'}`} />
               <span className="text-[11px] font-medium">{isRefreshing ? 'Syncing...' : 'Refresh'}</span>
             </button>
+
+            <ThemeToggle showLabel={false} />
 
             <button
               onClick={handleLockAgain}
